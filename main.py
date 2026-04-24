@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 import asyncio
 import time
+import json
 
 TOKEN = "8705414475:AAGJsY7sDIPapEyRtxC_fH3NEyivSX_h-N8"
 WEBAPP_URL = "https://testcrypt-production.up.railway.app"
@@ -15,10 +16,10 @@ app = FastAPI()
 
 # chat_id -> {username, first_name, last_seen}
 online_users = {}
+ONLINE_TIMEOUT = 30
 
-ONLINE_TIMEOUT = 30  # секунд без пинга — считаем офлайн
-
-# chat_id -> [{"from_id": ..., "text": ...}, ...]
+# временный буфер: chat_id -> [{"from_id": ..., "payload": ...}]
+# сообщения хранятся здесь только до момента когда WebApp их заберёт
 inbox = {}
 
 
@@ -35,6 +36,23 @@ def get_online_list():
 # -------------------------
 @dp.message()
 async def handle_message(message: types.Message):
+    text = message.text or ""
+
+    # Если это наш служебный пакет от бота другому пользователю —
+    # кладём в inbox получателя (сообщение пришло через Telegram)
+    if text.startswith("E2E:"):
+        try:
+            raw = text[4:]
+            data = json.loads(raw)
+            to_id = str(message.chat.id)
+            if to_id not in inbox:
+                inbox[to_id] = []
+            inbox[to_id].append(data)
+        except Exception:
+            pass
+        return
+
+    # Обычное сообщение — отвечаем кнопкой
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Open Chat", web_app=WebAppInfo(url=WEBAPP_URL))
     ]])
@@ -97,12 +115,10 @@ async def send_message(request: Request):
     from_id = str(data["from_id"])
     payload = data["payload"]  # {type: "dh_init"|"dh_response"|"msg", ...}
 
-    if to_id not in inbox:
-        inbox[to_id] = []
-    inbox[to_id].append({"from_id": from_id, "payload": payload})
-
-    if payload.get("type") == "msg":
-        await bot.send_message(to_id, "🔒 Новое зашифрованное сообщение")
+    # Отправляем через Telegram бота — он является транспортом
+    # Получатель видит зашифрованный пакет в своём чате с ботом
+    packet = {"from_id": from_id, "payload": payload}
+    await bot.send_message(to_id, "E2E:" + json.dumps(packet, separators=(",", ":")))
 
     return {"ok": True}
 
