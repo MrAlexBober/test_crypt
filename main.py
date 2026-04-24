@@ -10,6 +10,8 @@ WEBAPP_URL = "https://testcrypt-production.up.railway.app"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+print("WEBAPP_URL:", WEBAPP_URL)
+
 app = FastAPI()
 
 
