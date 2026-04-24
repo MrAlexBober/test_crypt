@@ -14,11 +14,7 @@
       min-height: 100vh;
     }
 
-    h3 {
-      font-size: 17px;
-      margin-bottom: 12px;
-      color: var(--tg-theme-text-color, #000);
-    }
+    h3 { font-size: 17px; margin-bottom: 12px; }
 
     button {
       padding: 8px 16px;
@@ -30,6 +26,9 @@
       cursor: pointer;
     }
 
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    /* ONLINE LIST */
     #user-list {
       border: 1px solid var(--tg-theme-hint-color, #ccc);
       border-radius: 10px;
@@ -45,30 +44,70 @@
       align-items: center;
       gap: 10px;
       background: var(--tg-theme-bg-color, #fff);
-      transition: opacity 0.15s;
     }
-
     .user-item:active { opacity: 0.7; }
     .user-item:last-child { border-bottom: none; }
-
-    .online-dot {
-      width: 9px; height: 9px;
-      background: #4caf50;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
+    .online-dot { width: 9px; height: 9px; background: #4caf50; border-radius: 50%; flex-shrink: 0; }
     .user-name { font-size: 15px; font-weight: 500; }
     .user-username { font-size: 12px; color: var(--tg-theme-hint-color, #888); }
 
-    #empty-msg {
-      padding: 14px;
-      color: var(--tg-theme-hint-color, #888);
-      font-size: 14px;
-      text-align: center;
+    /* CRYPTO PANEL */
+    #crypto-panel {
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
     }
 
-    /* CHAT SCREEN */
+    #crypto-panel summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--tg-theme-text-color, #000);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .crypto-row {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .crypto-label {
+      color: var(--tg-theme-hint-color, #888);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .crypto-value {
+      font-family: monospace;
+      font-size: 11px;
+      word-break: break-all;
+      background: var(--tg-theme-bg-color, #fff);
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--tg-theme-hint-color, #ddd);
+      color: var(--tg-theme-text-color, #000);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-wait { background: #ff980020; color: #ff9800; }
+    .status-ok { background: #4caf5020; color: #4caf50; }
+
+    /* CHAT */
     #screen-chat { display: none; flex-direction: column; height: calc(100vh - 24px); }
 
     #chat-header {
@@ -85,11 +124,7 @@
       font-size: 13px;
     }
 
-    #recipient-label {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--tg-theme-text-color, #000);
-    }
+    #recipient-label { font-size: 15px; font-weight: 600; }
 
     #chat-box {
       flex: 1;
@@ -101,10 +136,14 @@
       background: var(--tg-theme-secondary-bg-color, #f5f5f5);
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
     }
 
-    .msg {
+    .msg-wrap { display: flex; flex-direction: column; }
+    .msg-wrap.me { align-items: flex-end; }
+    .msg-wrap.them { align-items: flex-start; }
+
+    .msg-bubble {
       max-width: 75%;
       padding: 8px 12px;
       border-radius: 14px;
@@ -113,25 +152,30 @@
       word-break: break-word;
     }
 
-    .msg.me {
-      align-self: flex-end;
+    .msg-wrap.me .msg-bubble {
       background: var(--tg-theme-button-color, #1a73e8);
       color: var(--tg-theme-button-text-color, #fff);
       border-bottom-right-radius: 4px;
     }
 
-    .msg.them {
-      align-self: flex-start;
+    .msg-wrap.them .msg-bubble {
       background: var(--tg-theme-bg-color, #fff);
       color: var(--tg-theme-text-color, #000);
       border: 1px solid var(--tg-theme-hint-color, #ddd);
       border-bottom-left-radius: 4px;
     }
 
-    #input-row {
-      display: flex;
-      gap: 8px;
+    .msg-cipher {
+      font-family: monospace;
+      font-size: 10px;
+      color: var(--tg-theme-hint-color, #aaa);
+      max-width: 75%;
+      word-break: break-all;
+      margin-top: 2px;
+      padding: 0 4px;
     }
+
+    #input-row { display: flex; gap: 8px; }
 
     #msg-input {
       flex: 1;
@@ -145,29 +189,55 @@
     }
 
     #msg-input::placeholder { color: var(--tg-theme-hint-color, #aaa); }
-
     #send-btn { border-radius: 20px; }
   </style>
 </head>
 <body>
 
+<!-- ЭКРАН 1: список онлайн -->
 <div id="screen-online">
   <h3>Онлайн</h3>
   <button onclick="refreshList()">Обновить</button>
   <div id="user-list">
-    <div id="empty-msg">Загрузка...</div>
+    <div style="padding:14px;color:var(--tg-theme-hint-color);font-size:14px;text-align:center">Загрузка...</div>
   </div>
 </div>
 
+<!-- ЭКРАН 2: чат -->
 <div id="screen-chat">
   <div id="chat-header">
     <button id="back-btn" onclick="goBack()">← Назад</button>
     <div id="recipient-label"></div>
   </div>
+
+  <!-- Крипто панель -->
+  <details id="crypto-panel">
+    <summary>
+      🔐 Шифрование
+      <span id="crypto-status-badge" class="status-badge status-wait">Обмен ключами...</span>
+    </summary>
+
+    <div class="crypto-row">
+      <div class="crypto-label">Ваш публичный ключ (ECDH P-256)</div>
+      <div class="crypto-value" id="my-pubkey-display">—</div>
+    </div>
+
+    <div class="crypto-row">
+      <div class="crypto-label">Публичный ключ собеседника</div>
+      <div class="crypto-value" id="their-pubkey-display">ожидание...</div>
+    </div>
+
+    <div class="crypto-row">
+      <div class="crypto-label">AES-256-GCM ключ сессии</div>
+      <div class="crypto-value" id="aes-key-display">не согласован</div>
+    </div>
+  </details>
+
   <div id="chat-box"></div>
+
   <div id="input-row">
-    <input id="msg-input" placeholder="Сообщение..." />
-    <button id="send-btn" onclick="sendMsg()">↑</button>
+    <input id="msg-input" placeholder="Сообщение..." disabled />
+    <button id="send-btn" onclick="sendMsg()" disabled>↑</button>
   </div>
 </div>
 
@@ -183,6 +253,77 @@ const myName = me.first_name || "Unknown";
 let recipientId = null;
 let recipientName = null;
 
+// Крипто состояние
+let myKeyPair = null;
+let myPubKeyB64 = null;
+let aesKey = null;
+
+// ============================
+// CRYPTO UTILS (Web Crypto API)
+// ============================
+
+async function generateKeyPair() {
+    return await crypto.subtle.generateKey(
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        ["deriveKey"]
+    );
+}
+
+function toB64(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+
+function fromB64(b64) {
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+async function exportPubKey(key) {
+    const raw = await crypto.subtle.exportKey("raw", key);
+    return toB64(raw);
+}
+
+async function importPubKey(b64) {
+    return await crypto.subtle.importKey(
+        "raw", fromB64(b64),
+        { name: "ECDH", namedCurve: "P-256" },
+        true, []
+    );
+}
+
+async function deriveAES(myPrivKey, theirPubKey) {
+    return await crypto.subtle.deriveKey(
+        { name: "ECDH", public: theirPubKey },
+        myPrivKey,
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
+}
+
+async function encryptMsg(text) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(text);
+    const cipherBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encoded);
+    return { iv: toB64(iv), ciphertext: toB64(cipherBuf) };
+}
+
+async function decryptMsg(iv_b64, ciphertext_b64) {
+    const iv = fromB64(iv_b64);
+    const ct = fromB64(ciphertext_b64);
+    const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, ct);
+    return new TextDecoder().decode(buf);
+}
+
+async function getAESKeyHex() {
+    const raw = await crypto.subtle.exportKey("raw", aesKey);
+    return Array.from(new Uint8Array(raw)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
+// ============================
+// ONLINE PRESENCE
+// ============================
+
 async function joinOnline() {
     await fetch("/online/join", {
         method: "POST",
@@ -191,8 +332,8 @@ async function joinOnline() {
     });
 }
 
-setInterval(async () => {
-    await fetch("/online/ping", {
+setInterval(() => {
+    fetch("/online/ping", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ chat_id: myId })
@@ -209,7 +350,7 @@ async function refreshList() {
     const list = document.getElementById("user-list");
     const others = users.filter(u => String(u.chat_id) !== String(myId));
     if (others.length === 0) {
-        list.innerHTML = '<div id="empty-msg">Никого онлайн</div>';
+        list.innerHTML = '<div style="padding:14px;color:var(--tg-theme-hint-color);font-size:14px;text-align:center">Никого онлайн</div>';
         return;
     }
     list.innerHTML = others.map(u => `
@@ -223,14 +364,38 @@ async function refreshList() {
     `).join("");
 }
 
-function startChat(chatId, name) {
+// ============================
+// CHAT + DH FLOW
+// ============================
+
+async function startChat(chatId, name) {
     recipientId = chatId;
     recipientName = name;
+    aesKey = null;
+    myKeyPair = null;
+    myPubKeyB64 = null;
+
     document.getElementById("recipient-label").innerText = name;
     document.getElementById("screen-online").style.display = "none";
-    const chatScreen = document.getElementById("screen-chat");
-    chatScreen.style.display = "flex";
+    document.getElementById("screen-chat").style.display = "flex";
     document.getElementById("chat-box").innerHTML = "";
+    document.getElementById("msg-input").disabled = true;
+    document.getElementById("send-btn").disabled = true;
+    document.getElementById("crypto-status-badge").className = "status-badge status-wait";
+    document.getElementById("crypto-status-badge").innerText = "Обмен ключами...";
+    document.getElementById("their-pubkey-display").innerText = "ожидание...";
+    document.getElementById("aes-key-display").innerText = "не согласован";
+
+    // Генерируем ключи
+    myKeyPair = await generateKeyPair();
+    myPubKeyB64 = await exportPubKey(myKeyPair.publicKey);
+    document.getElementById("my-pubkey-display").innerText = myPubKeyB64;
+
+    // Открываем крипто панель чтобы пользователь видел процесс
+    document.getElementById("crypto-panel").open = true;
+
+    // Отправляем dh_init собеседнику
+    await sendPayload({ type: "dh_init", pubkey: myPubKeyB64 });
 }
 
 function goBack() {
@@ -240,39 +405,121 @@ function goBack() {
     refreshList();
 }
 
-function addMessage(text, fromMe) {
+async function sendPayload(payload) {
+    await fetch("/send", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ to_id: recipientId, from_id: myId, payload })
+    });
+}
+
+function addMessage(plaintext, ciphertext_b64, fromMe) {
     const box = document.getElementById("chat-box");
-    const div = document.createElement("div");
-    div.className = "msg " + (fromMe ? "me" : "them");
-    div.innerText = text;
-    box.appendChild(div);
+    const wrap = document.createElement("div");
+    wrap.className = "msg-wrap " + (fromMe ? "me" : "them");
+
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble";
+    bubble.innerText = plaintext;
+    wrap.appendChild(bubble);
+
+    // показываем зашифрованный вид под сообщением
+    if (ciphertext_b64) {
+        const cipher = document.createElement("div");
+        cipher.className = "msg-cipher";
+        cipher.innerText = "🔒 " + ciphertext_b64.slice(0, 40) + "...";
+        wrap.appendChild(cipher);
+    }
+
+    box.appendChild(wrap);
     box.scrollTop = box.scrollHeight;
 }
 
 async function sendMsg() {
-    if (!recipientId) return;
+    if (!aesKey || !recipientId) return;
     const input = document.getElementById("msg-input");
     const text = input.value.trim();
     if (!text) return;
-    addMessage(text, true);
+
+    const { iv, ciphertext } = await encryptMsg(text);
+    addMessage(text, ciphertext, true);
     input.value = "";
-    await fetch("/send", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ chat_id: recipientId, from_id: myId, text: text })
-    });
+
+    await sendPayload({ type: "msg", iv, ciphertext });
 }
 
 document.getElementById("msg-input").addEventListener("keydown", e => {
     if (e.key === "Enter") sendMsg();
 });
 
+// ============================
+// POLLING
+// ============================
+
 async function pollMessages() {
     if (!myId) return;
     const res = await fetch("/messages/poll?chat_id=" + myId);
     const msgs = await res.json();
+
     for (const msg of msgs) {
-        addMessage(msg.text, false);
+        const { from_id, payload } = msg;
+
+        if (payload.type === "dh_init") {
+            // Мы получили публичный ключ инициатора
+            // Если мы не в чате с этим пользователем — открываем чат автоматически
+            if (!recipientId) {
+                recipientId = from_id;
+                recipientName = "Собеседник";
+                document.getElementById("recipient-label").innerText = recipientName;
+                document.getElementById("screen-online").style.display = "none";
+                document.getElementById("screen-chat").style.display = "flex";
+                document.getElementById("chat-box").innerHTML = "";
+                document.getElementById("crypto-panel").open = true;
+
+                myKeyPair = await generateKeyPair();
+                myPubKeyB64 = await exportPubKey(myKeyPair.publicKey);
+                document.getElementById("my-pubkey-display").innerText = myPubKeyB64;
+            }
+
+            // Получаем их ключ, деривируем AES
+            const theirPub = await importPubKey(payload.pubkey);
+            document.getElementById("their-pubkey-display").innerText = payload.pubkey;
+            aesKey = await deriveAES(myKeyPair.privateKey, theirPub);
+            const keyHex = await getAESKeyHex();
+            document.getElementById("aes-key-display").innerText = keyHex;
+            document.getElementById("crypto-status-badge").className = "status-badge status-ok";
+            document.getElementById("crypto-status-badge").innerText = "✓ Зашифровано";
+            document.getElementById("msg-input").disabled = false;
+            document.getElementById("send-btn").disabled = false;
+
+            // Отправляем dh_response
+            await fetch("/send", {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify({ to_id: from_id, from_id: myId, payload: { type: "dh_response", pubkey: myPubKeyB64 } })
+            });
+
+        } else if (payload.type === "dh_response") {
+            // Инициатор получил ответный ключ
+            const theirPub = await importPubKey(payload.pubkey);
+            document.getElementById("their-pubkey-display").innerText = payload.pubkey;
+            aesKey = await deriveAES(myKeyPair.privateKey, theirPub);
+            const keyHex = await getAESKeyHex();
+            document.getElementById("aes-key-display").innerText = keyHex;
+            document.getElementById("crypto-status-badge").className = "status-badge status-ok";
+            document.getElementById("crypto-status-badge").innerText = "✓ Зашифровано";
+            document.getElementById("msg-input").disabled = false;
+            document.getElementById("send-btn").disabled = false;
+
+        } else if (payload.type === "msg") {
+            if (!aesKey) continue;
+            try {
+                const plaintext = await decryptMsg(payload.iv, payload.ciphertext);
+                addMessage(plaintext, payload.ciphertext, false);
+            } catch(e) {
+                addMessage("[ошибка расшифровки]", null, false);
+            }
+        }
     }
 }
 

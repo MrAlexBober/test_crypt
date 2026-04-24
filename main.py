@@ -93,15 +93,17 @@ async def online_list():
 @app.post("/send")
 async def send_message(request: Request):
     data = await request.json()
-    to_id = str(data["chat_id"])
+    to_id = str(data["to_id"])
     from_id = str(data["from_id"])
-    text = data["text"]
+    payload = data["payload"]  # {type: "dh_init"|"dh_response"|"msg", ...}
 
     if to_id not in inbox:
         inbox[to_id] = []
-    inbox[to_id].append({"from_id": from_id, "text": text})
+    inbox[to_id].append({"from_id": from_id, "payload": payload})
 
-    await bot.send_message(to_id, f"#LOL#{text}")
+    if payload.get("type") == "msg":
+        await bot.send_message(to_id, "🔒 Новое зашифрованное сообщение")
+
     return {"ok": True}
 
 
