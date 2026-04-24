@@ -327,6 +327,7 @@
     <button class="btn secondary small" onclick="showScreen('screen-sessions'); renderSessions();">← Назад</button>
     <div class="chat-header-name" id="chat-title"></div>
     <span id="chat-status-badge" class="badge"></span>
+    <button class="btn danger small" onclick="closeSession()" id="close-session-btn" style="display:none">Закрыть</button>
   </div>
 
   <details class="crypto-panel" id="crypto-panel">
@@ -813,6 +814,10 @@ async function openSession(sid) {
         badge.className = "badge pending"; badge.innerText = "Ожидание";
     }
 
+    // Показываем кнопку закрытия только для активных сессий
+    const closeable = session.status === "active" && !expired;
+    document.getElementById("close-session-btn").style.display = closeable ? "block" : "none";
+
     // Показываем/скрываем поле ввода
     const canChat = session.status === "active" && !expired;
     document.getElementById("chat-input-row").style.display = canChat ? "flex" : "none";
@@ -895,6 +900,34 @@ document.getElementById("msg-input").addEventListener("keydown", e => {
     if (e.key === "Enter") sendMsg();
 });
 
+async function closeSession() {
+    if (!currentSessionId) return;
+    const session = getSession(currentSessionId);
+    if (!session) return;
+
+    if (!confirm("Закрыть сессию? Собеседник получит уведомление, ключи будут удалены.")) return;
+
+    await fetch("/session/close", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            to_id: session.theirId,
+            from_id: myId,
+            from_name: myName + (myUsername ? " @" + myUsername : "")
+        })
+    });
+
+    // Удаляем сессию и историю локально
+    const all = getSessions().filter(s => s.id !== currentSessionId);
+    saveSessions(all);
+    localStorage.removeItem("msgs_" + currentSessionId);
+    currentSessionId = null;
+    currentAESKey = null;
+
+    showScreen("screen-sessions");
+    renderSessions();
+}
+
 // ============================
 // POLLING
 // ============================
@@ -944,6 +977,19 @@ async function poll() {
                 document.getElementById("chat-pending-notice").style.display = "none";
             }
 
+            renderSessions();
+
+        } else if (payload.type === "session_closed") {
+            const sid = sessionId(myId, from_id);
+            const all = getSessions().filter(s => s.id !== sid);
+            saveSessions(all);
+            localStorage.removeItem("msgs_" + sid);
+
+            if (currentSessionId === sid) {
+                currentSessionId = null;
+                currentAESKey = null;
+                showScreen("screen-sessions");
+            }
             renderSessions();
 
         } else if (payload.type === "msg") {

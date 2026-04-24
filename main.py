@@ -182,9 +182,9 @@ async def session_respond(request: Request):
         "payload": {"type": "dh_response", "pubkey": pubkey, "from_name": from_name}
     })
 
-    # Убираем из pending
-    if to_id in pending_dh:
-        pending_dh[to_id] = [p for p in pending_dh[to_id] if p["from_id"] != from_id]
+    # Убираем из pending получателя (from_id), где инициатор = to_id
+    if from_id in pending_dh:
+        pending_dh[from_id] = [p for p in pending_dh[from_id] if p["from_id"] != to_id]
 
     await bot.send_message(
         to_id,
@@ -204,6 +204,31 @@ async def session_decline(request: Request):
     from_id = str(data["from_id"])
     if to_id in pending_dh:
         pending_dh[to_id] = [p for p in pending_dh[to_id] if p["from_id"] != from_id]
+    return {"ok": True}
+
+
+# -------------------------
+# SESSION: CLOSE
+# -------------------------
+@app.post("/session/close")
+async def session_close(request: Request):
+    data = await request.json()
+    to_id = str(data["to_id"])
+    from_id = str(data["from_id"])
+    from_name = data.get("from_name", "Собеседник")
+
+    if to_id not in inbox:
+        inbox[to_id] = []
+    inbox[to_id].append({
+        "from_id": from_id,
+        "payload": {"type": "session_closed", "from_name": from_name}
+    })
+
+    await bot.send_message(
+        to_id,
+        f"🔒 <b>{from_name}</b> закрыл(а) сессию.",
+        parse_mode="HTML"
+    )
     return {"ok": True}
 
 
