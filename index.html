@@ -1,54 +1,42 @@
 <!DOCTYPE html>
-<html>
-<head>
-  <title>LOL Chat</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    body { font-family: Arial; padding: 10px; }
-    #chat { height: 400px; overflow: auto; border: 1px solid #ccc; padding: 10px; }
-    input { width: 80%; }
-  </style>
-</head>
-
-<body>
-
-<h3>LOL Chat MVP</h3>
-
-<div id="chat"></div>
-
-<input id="msg" placeholder="type..." />
-<button onclick="send()">Send</button>
-
-<script>
-const tg = window.Telegram.WebApp;
-tg.expand();
-
-let chat = document.getElementById("chat");
-
-function addMessage(text, fromMe=false){
-    let div = document.createElement("div");
-    div.innerText = (fromMe ? "You: " : "Bot: ") + text;
-    chat.appendChild(div);
-}
-
-async function send(){
-    let input = document.getElementById("msg");
-    let text = input.value;
-
-    addMessage(text, true);
-
-    await fetch("/send", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-            chat_id: tg.initDataUnsafe.user.id,
-            text: text
-        })
-    });
-
-    input.value = "";
-}
-</script>
-
-</body>
-</html>
+  <html>
+  <head>
+    <title>LOL Chat</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      body { font-family: Arial; padding: 10px; }
+      #chat { height: 400px; overflow: auto; border: 1px solid #ccc; padding: 10px; }
+      input { width: 80%; }
+    </style>
+  </head>
+  <body>
+  <h3>LOL Chat MVP</h3>
+  <div id="chat"></div>
+  <input id="msg" placeholder="type..." />
+  <button onclick="send()">Send</button>
+  <script>
+  const tg = window.Telegram.WebApp;
+  tg.expand();
+  let chat = document.getElementById("chat");
+  function addMessage(text, fromMe=false){
+      let div = document.createElement("div");
+      div.innerText = (fromMe ? "You: " : "Bot: ") + text;
+      chat.appendChild(div);
+  }
+  async function send(){
+      let input = document.getElementById("msg");
+      let text = input.value;
+      addMessage(text, true);
+      await fetch("/send", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({
+              chat_id: tg.initDataUnsafe.user.id,
+              text: text
+          })
+      });
+      input.value = "";
+  }
+  </script>
+  </body>
+  </html>
