@@ -290,9 +290,21 @@
     <h3>Новая сессия</h3>
   </div>
 
-  <div class="form-group">
+  <div class="form-group" style="position:relative">
     <label class="form-label">Username собеседника</label>
-    <input id="new-username" class="form-input" placeholder="@username" />
+    <input id="new-username" class="form-input" placeholder="@username" autocomplete="off" />
+    <div id="username-suggestions" style="
+      display:none;
+      position:absolute;
+      top:100%;
+      left:0; right:0;
+      background:var(--tg-theme-bg-color,#fff);
+      border:1px solid var(--tg-theme-hint-color,#ccc);
+      border-radius:10px;
+      overflow:hidden;
+      z-index:10;
+      box-shadow:0 4px 12px rgba(0,0,0,0.15);
+    "></div>
   </div>
 
   <div class="form-group">
@@ -583,6 +595,46 @@ function renderIncoming(items) {
 // ============================
 // TTL SELECT
 // ============================
+
+// ============================
+// USERNAME AUTOCOMPLETE
+// ============================
+
+const usernameInput = document.getElementById("new-username");
+const suggestionsBox = document.getElementById("username-suggestions");
+let searchTimeout = null;
+
+usernameInput.addEventListener("input", () => {
+    clearTimeout(searchTimeout);
+    const q = usernameInput.value.trim();
+    if (!q) { suggestionsBox.style.display = "none"; return; }
+    searchTimeout = setTimeout(() => fetchSuggestions(q), 200);
+});
+
+usernameInput.addEventListener("blur", () => {
+    setTimeout(() => { suggestionsBox.style.display = "none"; }, 150);
+});
+
+async function fetchSuggestions(q) {
+    const res = await fetch("/search?q=" + encodeURIComponent(q));
+    const items = await res.json();
+    if (!items.length) { suggestionsBox.style.display = "none"; return; }
+
+    suggestionsBox.innerHTML = items.map(u => `
+        <div onclick="selectUsername('@${u.username}')" style="
+            padding:11px 14px;
+            cursor:pointer;
+            border-bottom:1px solid var(--tg-theme-secondary-bg-color,#eee);
+            font-size:14px;
+        ">@${u.username}</div>
+    `).join("");
+    suggestionsBox.style.display = "block";
+}
+
+function selectUsername(username) {
+    usernameInput.value = username;
+    suggestionsBox.style.display = "none";
+}
 
 document.querySelectorAll(".ttl-option").forEach(btn => {
     btn.addEventListener("click", () => {

@@ -109,6 +109,19 @@ async def resolve_username(username: str):
     return JSONResponse({"ok": True, "chat_id": chat_id})
 
 
+@app.get("/search")
+async def search_users(q: str):
+    q = q.lower().lstrip("@")
+    if not q:
+        return JSONResponse([])
+    matches = [
+        {"username": uname, "chat_id": cid}
+        for uname, cid in known_users.items()
+        if q in uname
+    ][:10]
+    return JSONResponse(matches)
+
+
 # -------------------------
 # SESSION: INIT (отправить запрос на сессию)
 # -------------------------
