@@ -4,50 +4,146 @@
   <title>LOL Chat</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    body { font-family: Arial; padding: 10px; }
-    #chat { height: 400px; overflow: auto; border: 1px solid #ccc; padding: 10px; }
-    input { width: 80%; }
+    body { font-family: Arial; padding: 10px; margin: 0; }
+    #screen-online { display: block; }
+    #screen-chat { display: none; }
+    #user-list { border: 1px solid #ccc; border-radius: 6px; margin-top: 10px; }
+    .user-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .user-item:hover { background: #f5f5f5; }
+    .user-item:last-child { border-bottom: none; }
+    .online-dot { width: 8px; height: 8px; background: #4caf50; border-radius: 50%; }
+    #chat-box { height: 350px; overflow: auto; border: 1px solid #ccc; border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+    .msg { margin-bottom: 6px; }
+    .msg.me { text-align: right; color: #1a73e8; }
+    .msg.them { text-align: left; color: #333; }
+    #input-row { display: flex; gap: 6px; }
+    #msg-input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 8px 14px; border: none; border-radius: 6px; background: #1a73e8; color: white; cursor: pointer; }
+    h3 { margin-top: 0; }
+    #back-btn { background: #888; margin-bottom: 10px; }
+    #recipient-label { color: #555; font-size: 13px; margin-bottom: 8px; }
   </style>
 </head>
-
 <body>
 
-<h3>LOL Chat MVP</h3>
+<!-- ЭКРАН 1: список онлайн -->
+<div id="screen-online">
+  <h3>Онлайн пользователи</h3>
+  <button onclick="refreshList()">Обновить</button>
+  <div id="user-list"><div style="padding:10px;color:gray">Загрузка...</div></div>
+</div>
 
-<div id="chat"></div>
-
-<input id="msg" placeholder="type..." />
-<button onclick="send()">Send</button>
+<!-- ЭКРАН 2: чат -->
+<div id="screen-chat">
+  <button id="back-btn" onclick="goBack()">← Назад</button>
+  <div id="recipient-label"></div>
+  <div id="chat-box"></div>
+  <div id="input-row">
+    <input id="msg-input" placeholder="Сообщение..." />
+    <button onclick="sendMsg()">Send</button>
+  </div>
+</div>
 
 <script>
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-let chat = document.getElementById("chat");
+const me = tg.initDataUnsafe.user || {};
+const myId = me.id;
+const myUsername = me.username || "";
+const myName = me.first_name || "Unknown";
 
-function addMessage(text, fromMe=false){
-    let div = document.createElement("div");
-    div.innerText = (fromMe ? "You: " : "Bot: ") + text;
-    chat.appendChild(div);
+let recipientId = null;
+let recipientName = null;
+
+// --- регистрация онлайн ---
+async function joinOnline() {
+    await fetch("/online/join", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ chat_id: myId, username: myUsername, first_name: myName })
+    });
 }
 
-async function send(){
-    let input = document.getElementById("msg");
-    let text = input.value;
+// --- пинг каждые 10 сек ---
+setInterval(async () => {
+    await fetch("/online/ping", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ chat_id: myId })
+    });
+}, 10000);
+
+// --- уход ---
+window.addEventListener("beforeunload", () => {
+    navigator.sendBeacon("/online/leave", JSON.stringify({ chat_id: myId }));
+});
+
+// --- список ---
+async function refreshList() {
+    const res = await fetch("/online/list");
+    const users = await res.json();
+    const list = document.getElementById("user-list");
+    const others = users.filter(u => String(u.chat_id) !== String(myId));
+    if (others.length === 0) {
+        list.innerHTML = '<div style="padding:10px;color:gray">Никого онлайн</div>';
+        return;
+    }
+    list.innerHTML = others.map(u => `
+        <div class="user-item" onclick="startChat('${u.chat_id}', '${u.first_name} ${u.username ? "@"+u.username : ""}')">
+            <div class="online-dot"></div>
+            <div>
+                <b>${u.first_name}</b>
+                ${u.username ? '<span style="color:gray;font-size:12px"> @' + u.username + '</span>' : ""}
+            </div>
+        </div>
+    `).join("");
+}
+
+function startChat(chatId, name) {
+    recipientId = chatId;
+    recipientName = name;
+    document.getElementById("recipient-label").innerText = "Чат с: " + name;
+    document.getElementById("screen-online").style.display = "none";
+    document.getElementById("screen-chat").style.display = "block";
+    document.getElementById("chat-box").innerHTML = "";
+}
+
+function goBack() {
+    recipientId = null;
+    document.getElementById("screen-online").style.display = "block";
+    document.getElementById("screen-chat").style.display = "none";
+    refreshList();
+}
+
+function addMessage(text, fromMe) {
+    const box = document.getElementById("chat-box");
+    const div = document.createElement("div");
+    div.className = "msg " + (fromMe ? "me" : "them");
+    div.innerText = (fromMe ? "Вы: " : recipientName + ": ") + text;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+}
+
+async function sendMsg() {
+    if (!recipientId) return;
+    const input = document.getElementById("msg-input");
+    const text = input.value.trim();
+    if (!text) return;
 
     addMessage(text, true);
+    input.value = "";
 
     await fetch("/send", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-            chat_id: tg.initDataUnsafe.user.id,
-            text: text
-        })
+        body: JSON.stringify({ chat_id: recipientId, text: text })
     });
-
-    input.value = "";
 }
+
+// --- старт ---
+joinOnline();
+refreshList();
 </script>
 
 </body>

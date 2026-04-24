@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 import asyncio
-from fastapi.responses import HTMLResponse
+import time
 
 TOKEN = "8705414475:AAGJsY7sDIPapEyRtxC_fH3NEyivSX_h-N8"
 WEBAPP_URL = "https://testcrypt-production.up.railway.app"
@@ -10,27 +11,27 @@ WEBAPP_URL = "https://testcrypt-production.up.railway.app"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-print("WEBAPP_URL:", WEBAPP_URL)
-
 app = FastAPI()
 
+# chat_id -> {username, first_name, last_seen}
+online_users = {}
 
-# -------------------------
-# LOGIC
-# -------------------------
-def message_wrapper(text: str, mode="send"):
-    if mode == "send":
-        return f"#LOL#{text}"
-    if mode == "receive":
-        return text.replace("#LOL#", "").strip()
-    return text
+ONLINE_TIMEOUT = 30  # секунд без пинга — считаем офлайн
+
+
+def get_online_list():
+    now = time.time()
+    alive = {k: v for k, v in online_users.items() if now - v["last_seen"] < ONLINE_TIMEOUT}
+    online_users.clear()
+    online_users.update(alive)
+    return [{"chat_id": k, **v} for k, v in alive.items()]
 
 
 # -------------------------
 # BOT HANDLERS
 # -------------------------
 @dp.message()
-async def handle_start(message: types.Message):
+async def handle_message(message: types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Open Chat", web_app=WebAppInfo(url=WEBAPP_URL))
     ]])
@@ -47,19 +48,51 @@ def home():
 
 
 # -------------------------
-# SEND MESSAGE FROM WEBAPP
+# ONLINE PRESENCE
+# -------------------------
+@app.post("/online/join")
+async def online_join(request: Request):
+    data = await request.json()
+    chat_id = str(data["chat_id"])
+    online_users[chat_id] = {
+        "username": data.get("username", ""),
+        "first_name": data.get("first_name", ""),
+        "last_seen": time.time()
+    }
+    return {"ok": True}
+
+
+@app.post("/online/ping")
+async def online_ping(request: Request):
+    data = await request.json()
+    chat_id = str(data["chat_id"])
+    if chat_id in online_users:
+        online_users[chat_id]["last_seen"] = time.time()
+    return {"ok": True}
+
+
+@app.post("/online/leave")
+async def online_leave(request: Request):
+    data = await request.json()
+    chat_id = str(data["chat_id"])
+    online_users.pop(chat_id, None)
+    return {"ok": True}
+
+
+@app.get("/online/list")
+async def online_list():
+    return JSONResponse(get_online_list())
+
+
+# -------------------------
+# SEND MESSAGE
 # -------------------------
 @app.post("/send")
 async def send_message(request: Request):
     data = await request.json()
-
     chat_id = data["chat_id"]
     text = data["text"]
-
-    processed = message_wrapper(text, mode="send")
-
-    await bot.send_message(chat_id, processed)
-
+    await bot.send_message(chat_id, f"#LOL#{text}")
     return {"ok": True}
 
 
@@ -69,7 +102,6 @@ async def send_message(request: Request):
 @app.post("/telegram")
 async def telegram(request: Request):
     data = await request.json()
-    print("GOT UPDATE:", data)
     update = types.Update(**data)
     await dp.feed_update(bot, update)
     return {"ok": True}
