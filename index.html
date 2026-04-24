@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>LOL Chat</title>
+  <title>E2E Chat</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -10,85 +10,164 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--tg-theme-bg-color, #fff);
       color: var(--tg-theme-text-color, #000);
-      padding: 12px;
       min-height: 100vh;
     }
 
-    h3 { font-size: 17px; margin-bottom: 12px; }
+    .screen { display: none; padding: 14px; }
+    .screen.active { display: block; }
 
-    button {
-      padding: 8px 16px;
+    /* HEADER */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .header h3 { font-size: 18px; flex: 1; }
+
+    /* BUTTONS */
+    .btn {
+      padding: 9px 16px;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       background: var(--tg-theme-button-color, #1a73e8);
       color: var(--tg-theme-button-text-color, #fff);
       font-size: 14px;
       cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn.secondary {
+      background: var(--tg-theme-secondary-bg-color, #eee);
+      color: var(--tg-theme-text-color, #000);
+    }
+    .btn.danger { background: #e53935; color: #fff; }
+    .btn.success { background: #43a047; color: #fff; }
+    .btn.small { padding: 6px 12px; font-size: 13px; }
+
+    /* CARDS */
+    .card {
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
     }
 
-    button:disabled { opacity: 0.4; cursor: default; }
-
-    /* ONLINE LIST */
-    #user-list {
-      border: 1px solid var(--tg-theme-hint-color, #ccc);
-      border-radius: 10px;
-      margin-top: 10px;
-      overflow: hidden;
-    }
-
-    .user-item {
-      padding: 12px;
-      border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
-      cursor: pointer;
+    .session-item {
       display: flex;
       align-items: center;
-      gap: 10px;
-      background: var(--tg-theme-bg-color, #fff);
-    }
-    .user-item:active { opacity: 0.7; }
-    .user-item:last-child { border-bottom: none; }
-    .online-dot { width: 9px; height: 9px; background: #4caf50; border-radius: 50%; flex-shrink: 0; }
-    .user-name { font-size: 15px; font-weight: 500; }
-    .user-username { font-size: 12px; color: var(--tg-theme-hint-color, #888); }
-
-    /* CRYPTO PANEL */
-    #crypto-panel {
+      gap: 12px;
+      cursor: pointer;
+      padding: 12px 14px;
+      border-radius: 12px;
+      margin-bottom: 8px;
       background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+    }
+    .session-item:active { opacity: 0.7; }
+
+    .session-avatar {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--tg-theme-button-color, #1a73e8);
+      color: var(--tg-theme-button-text-color, #fff);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: bold; flex-shrink: 0;
+    }
+
+    .session-info { flex: 1; min-width: 0; }
+    .session-name { font-weight: 600; font-size: 15px; }
+    .session-sub { font-size: 12px; color: var(--tg-theme-hint-color, #888); margin-top: 2px; }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge.active { background: #4caf5022; color: #4caf50; }
+    .badge.pending { background: #ff980022; color: #ff9800; }
+    .badge.incoming { background: #2196f322; color: #2196f3; }
+    .badge.expired { background: #9e9e9e22; color: #9e9e9e; }
+
+    /* INCOMING REQUEST CARD */
+    .incoming-card {
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      border-left: 3px solid #2196f3;
+    }
+    .incoming-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .incoming-sub { font-size: 12px; color: var(--tg-theme-hint-color, #888); margin-bottom: 10px; }
+    .incoming-actions { display: flex; gap: 8px; }
+
+    /* FORM */
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      color: var(--tg-theme-hint-color, #888);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
       border: 1px solid var(--tg-theme-hint-color, #ccc);
       border-radius: 10px;
-      padding: 10px;
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+      color: var(--tg-theme-text-color, #000);
+      font-size: 15px;
+      outline: none;
+    }
+    .form-input::placeholder { color: var(--tg-theme-hint-color, #aaa); }
+
+    .ttl-options { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ttl-option {
+      padding: 7px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--tg-theme-hint-color, #ccc);
+      background: transparent;
+      color: var(--tg-theme-text-color, #000);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .ttl-option.selected {
+      background: var(--tg-theme-button-color, #1a73e8);
+      color: var(--tg-theme-button-text-color, #fff);
+      border-color: transparent;
+    }
+
+    /* CRYPTO PANEL */
+    details.crypto-panel {
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+      border-radius: 10px;
+      padding: 10px 12px;
       margin-bottom: 10px;
       font-size: 12px;
     }
-
-    #crypto-panel summary {
+    details.crypto-panel summary {
       cursor: pointer;
       font-weight: 600;
       font-size: 13px;
-      color: var(--tg-theme-text-color, #000);
       list-style: none;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
     }
-
-    .crypto-row {
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
+    .crypto-row { margin-top: 10px; }
     .crypto-label {
+      font-size: 10px;
       color: var(--tg-theme-hint-color, #888);
-      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      margin-bottom: 4px;
     }
-
     .crypto-value {
       font-family: monospace;
-      font-size: 11px;
+      font-size: 10px;
       word-break: break-all;
       background: var(--tg-theme-bg-color, #fff);
       padding: 6px 8px;
@@ -97,43 +176,18 @@
       color: var(--tg-theme-text-color, #000);
     }
 
-    .status-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .status-wait { background: #ff980020; color: #ff9800; }
-    .status-ok { background: #4caf5020; color: #4caf50; }
-
     /* CHAT */
-    #screen-chat { display: none; flex-direction: column; height: calc(100vh - 24px); }
+    #screen-chat.active { display: flex; flex-direction: column; height: 100vh; padding: 14px; }
 
-    #chat-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
+    .chat-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-shrink: 0;
     }
-
-    #back-btn {
-      background: var(--tg-theme-secondary-bg-color, #eee);
-      color: var(--tg-theme-text-color, #000);
-      padding: 6px 12px;
-      font-size: 13px;
-    }
-
-    #recipient-label { font-size: 15px; font-weight: 600; }
+    .chat-header-name { font-size: 15px; font-weight: 600; flex: 1; }
 
     #chat-box {
       flex: 1;
       overflow-y: auto;
-      border: 1px solid var(--tg-theme-hint-color, #ccc);
-      border-radius: 10px;
       padding: 10px;
-      margin-bottom: 10px;
-      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -144,100 +198,157 @@
     .msg-wrap.them { align-items: flex-start; }
 
     .msg-bubble {
-      max-width: 75%;
-      padding: 8px 12px;
-      border-radius: 14px;
+      max-width: 78%;
+      padding: 9px 13px;
+      border-radius: 16px;
       font-size: 14px;
       line-height: 1.4;
       word-break: break-word;
     }
-
     .msg-wrap.me .msg-bubble {
       background: var(--tg-theme-button-color, #1a73e8);
       color: var(--tg-theme-button-text-color, #fff);
       border-bottom-right-radius: 4px;
     }
-
     .msg-wrap.them .msg-bubble {
-      background: var(--tg-theme-bg-color, #fff);
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
       color: var(--tg-theme-text-color, #000);
-      border: 1px solid var(--tg-theme-hint-color, #ddd);
       border-bottom-left-radius: 4px;
     }
-
     .msg-cipher {
       font-family: monospace;
       font-size: 10px;
       color: var(--tg-theme-hint-color, #aaa);
-      max-width: 75%;
-      word-break: break-all;
+      max-width: 78%;
+      margin-top: 2px;
+      padding: 0 4px;
+    }
+    .msg-time {
+      font-size: 10px;
+      color: var(--tg-theme-hint-color, #aaa);
       margin-top: 2px;
       padding: 0 4px;
     }
 
-    #input-row { display: flex; gap: 8px; }
+    .chat-pending-notice {
+      text-align: center;
+      padding: 20px;
+      color: var(--tg-theme-hint-color, #888);
+      font-size: 14px;
+    }
 
-    #msg-input {
+    .chat-input-area { flex-shrink: 0; padding-top: 8px; }
+    .input-row { display: flex; gap: 8px; }
+    .msg-input {
       flex: 1;
       padding: 10px 14px;
       border: 1px solid var(--tg-theme-hint-color, #ccc);
-      border-radius: 20px;
+      border-radius: 22px;
       background: var(--tg-theme-secondary-bg-color, #f5f5f5);
       color: var(--tg-theme-text-color, #000);
       font-size: 14px;
       outline: none;
     }
+    .msg-input::placeholder { color: var(--tg-theme-hint-color, #aaa); }
+    .send-btn { border-radius: 22px; padding: 10px 18px; }
 
-    #msg-input::placeholder { color: var(--tg-theme-hint-color, #aaa); }
-    #send-btn { border-radius: 20px; }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--tg-theme-hint-color, #888);
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+
+    .section-title {
+      font-size: 12px;
+      color: var(--tg-theme-hint-color, #888);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      margin-top: 16px;
+    }
+    .section-title:first-child { margin-top: 0; }
   </style>
 </head>
 <body>
 
-<!-- ЭКРАН 1: список онлайн -->
-<div id="screen-online">
-  <h3>Онлайн</h3>
-  <button onclick="refreshList()">Обновить</button>
-  <div id="user-list">
-    <div style="padding:14px;color:var(--tg-theme-hint-color);font-size:14px;text-align:center">Загрузка...</div>
+<!-- ЭКРАН: список сессий -->
+<div id="screen-sessions" class="screen active">
+  <div class="header">
+    <h3>Сессии</h3>
+    <button class="btn small" onclick="showScreen('screen-new')">+ Новая</button>
   </div>
+  <div id="incoming-section"></div>
+  <div id="sessions-list"></div>
 </div>
 
-<!-- ЭКРАН 2: чат -->
-<div id="screen-chat">
-  <div id="chat-header">
-    <button id="back-btn" onclick="goBack()">← Назад</button>
-    <div id="recipient-label"></div>
+<!-- ЭКРАН: новая сессия -->
+<div id="screen-new" class="screen">
+  <div class="header">
+    <button class="btn secondary small" onclick="showScreen('screen-sessions')">← Назад</button>
+    <h3>Новая сессия</h3>
   </div>
 
-  <!-- Крипто панель -->
-  <details id="crypto-panel">
+  <div class="form-group">
+    <label class="form-label">Username собеседника</label>
+    <input id="new-username" class="form-input" placeholder="@username" />
+  </div>
+
+  <div class="form-group">
+    <label class="form-label">Время жизни ключа</label>
+    <div class="ttl-options">
+      <button class="ttl-option" data-ttl="3600">1 час</button>
+      <button class="ttl-option" data-ttl="86400">24 часа</button>
+      <button class="ttl-option selected" data-ttl="604800">7 дней</button>
+      <button class="ttl-option" data-ttl="">Навсегда</button>
+    </div>
+  </div>
+
+  <div id="new-error" style="color:#e53935;font-size:13px;margin-bottom:12px;"></div>
+  <button class="btn" id="new-submit-btn" onclick="createSession()">Создать и отправить запрос</button>
+</div>
+
+<!-- ЭКРАН: чат -->
+<div id="screen-chat" class="screen">
+  <div class="chat-header">
+    <button class="btn secondary small" onclick="showScreen('screen-sessions'); renderSessions();">← Назад</button>
+    <div class="chat-header-name" id="chat-title"></div>
+    <span id="chat-status-badge" class="badge"></span>
+  </div>
+
+  <details class="crypto-panel" id="crypto-panel">
     <summary>
       🔐 Шифрование
-      <span id="crypto-status-badge" class="status-badge status-wait">Обмен ключами...</span>
     </summary>
-
     <div class="crypto-row">
-      <div class="crypto-label">Ваш публичный ключ (ECDH P-256)</div>
-      <div class="crypto-value" id="my-pubkey-display">—</div>
+      <div class="crypto-label">Мой публичный ключ (ECDH P-256)</div>
+      <div class="crypto-value" id="cp-my-pubkey">—</div>
     </div>
-
     <div class="crypto-row">
       <div class="crypto-label">Публичный ключ собеседника</div>
-      <div class="crypto-value" id="their-pubkey-display">ожидание...</div>
+      <div class="crypto-value" id="cp-their-pubkey">—</div>
     </div>
-
     <div class="crypto-row">
       <div class="crypto-label">AES-256-GCM ключ сессии</div>
-      <div class="crypto-value" id="aes-key-display">не согласован</div>
+      <div class="crypto-value" id="cp-aes-key">—</div>
+    </div>
+    <div class="crypto-row">
+      <div class="crypto-label">Истекает</div>
+      <div class="crypto-value" id="cp-expires">—</div>
     </div>
   </details>
 
   <div id="chat-box"></div>
 
-  <div id="input-row">
-    <input id="msg-input" placeholder="Сообщение..." disabled />
-    <button id="send-btn" onclick="sendMsg()" disabled>↑</button>
+  <div class="chat-input-area">
+    <div id="chat-pending-notice" class="chat-pending-notice" style="display:none">
+      ⏳ Ожидание ответа собеседника...
+    </div>
+    <div class="input-row" id="chat-input-row" style="display:none">
+      <input class="msg-input" id="msg-input" placeholder="Сообщение..." />
+      <button class="btn send-btn" onclick="sendMsg()">↑</button>
+    </div>
   </div>
 </div>
 
@@ -246,82 +357,140 @@ const tg = window.Telegram.WebApp;
 tg.expand();
 
 const me = tg.initDataUnsafe.user || {};
-const myId = me.id;
+const myId = String(me.id || "");
 const myUsername = me.username || "";
 const myName = me.first_name || "Unknown";
 
-let recipientId = null;
-let recipientName = null;
-
-// Крипто состояние
-let myKeyPair = null;
-let myPubKeyB64 = null;
-let aesKey = null;
+let currentSessionId = null;
+let currentAESKey = null;
+let selectedTTL = 604800;
 
 // ============================
-// CRYPTO UTILS (Web Crypto API)
+// CRYPTO
 // ============================
-
-async function generateKeyPair() {
-    return await crypto.subtle.generateKey(
-        { name: "ECDH", namedCurve: "P-256" },
-        true,
-        ["deriveKey"]
-    );
-}
 
 function toB64(buf) {
     return btoa(String.fromCharCode(...new Uint8Array(buf)));
 }
-
 function fromB64(b64) {
     return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
+async function generateKeyPair() {
+    return await crypto.subtle.generateKey(
+        { name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey"]
+    );
+}
+
 async function exportPubKey(key) {
-    const raw = await crypto.subtle.exportKey("raw", key);
-    return toB64(raw);
+    return toB64(await crypto.subtle.exportKey("raw", key));
+}
+
+async function exportPrivKey(key) {
+    return await crypto.subtle.exportKey("jwk", key);
 }
 
 async function importPubKey(b64) {
     return await crypto.subtle.importKey(
         "raw", fromB64(b64),
-        { name: "ECDH", namedCurve: "P-256" },
-        true, []
+        { name: "ECDH", namedCurve: "P-256" }, true, []
     );
 }
 
-async function deriveAES(myPrivKey, theirPubKey) {
+async function importPrivKey(jwk) {
+    return await crypto.subtle.importKey(
+        "jwk", jwk,
+        { name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey"]
+    );
+}
+
+async function deriveAES(privKey, theirPubKey) {
     return await crypto.subtle.deriveKey(
         { name: "ECDH", public: theirPubKey },
-        myPrivKey,
+        privKey,
         { name: "AES-GCM", length: 256 },
-        true,
+        true,  // extractable — для хранения в localStorage
         ["encrypt", "decrypt"]
     );
 }
 
-async function encryptMsg(text) {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encoded = new TextEncoder().encode(text);
-    const cipherBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encoded);
-    return { iv: toB64(iv), ciphertext: toB64(cipherBuf) };
-}
-
-async function decryptMsg(iv_b64, ciphertext_b64) {
-    const iv = fromB64(iv_b64);
-    const ct = fromB64(ciphertext_b64);
-    const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, ct);
-    return new TextDecoder().decode(buf);
-}
-
-async function getAESKeyHex() {
-    const raw = await crypto.subtle.exportKey("raw", aesKey);
+async function aesKeyToHex(key) {
+    const raw = await crypto.subtle.exportKey("raw", key);
     return Array.from(new Uint8Array(raw)).map(b => b.toString(16).padStart(2,"0")).join("");
 }
 
+async function hexToAESKey(hex) {
+    const bytes = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
+    return await crypto.subtle.importKey(
+        "raw", bytes, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+    );
+}
+
+async function encryptMsg(aesKey, text) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv }, aesKey, new TextEncoder().encode(text)
+    );
+    return { iv: toB64(iv), ciphertext: toB64(ct) };
+}
+
+async function decryptMsg(aesKey, iv_b64, ct_b64) {
+    const buf = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: fromB64(iv_b64) }, aesKey, fromB64(ct_b64)
+    );
+    return new TextDecoder().decode(buf);
+}
+
 // ============================
-// ONLINE PRESENCE
+// SESSION STORAGE
+// ============================
+
+function getSessions() {
+    return JSON.parse(localStorage.getItem("sessions") || "[]");
+}
+
+function saveSessions(s) {
+    localStorage.setItem("sessions", JSON.stringify(s));
+}
+
+function getSession(id) {
+    return getSessions().find(s => s.id === id) || null;
+}
+
+function upsertSession(session) {
+    const all = getSessions();
+    const idx = all.findIndex(s => s.id === session.id);
+    if (idx >= 0) all[idx] = session;
+    else all.unshift(session);
+    saveSessions(all);
+}
+
+function getMessages(sessionId) {
+    return JSON.parse(localStorage.getItem("msgs_" + sessionId) || "[]");
+}
+
+function saveMessage(sessionId, msg) {
+    const msgs = getMessages(sessionId);
+    msgs.push(msg);
+    localStorage.setItem("msgs_" + sessionId, JSON.stringify(msgs));
+}
+
+function sessionId(myId, theirId) {
+    return `${myId}_${theirId}`;
+}
+
+function isExpired(session) {
+    return session.expiresAt && Date.now() > session.expiresAt;
+}
+
+function expiresLabel(session) {
+    if (!session.expiresAt) return "Навсегда";
+    const d = new Date(session.expiresAt);
+    return d.toLocaleDateString("ru") + " " + d.toLocaleTimeString("ru", {hour:"2-digit",minute:"2-digit"});
+}
+
+// ============================
+// ONLINE
 // ============================
 
 async function joinOnline() {
@@ -334,8 +503,7 @@ async function joinOnline() {
 
 setInterval(() => {
     fetch("/online/ping", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
+        method: "POST", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ chat_id: myId })
     });
 }, 10000);
@@ -344,76 +512,279 @@ window.addEventListener("beforeunload", () => {
     navigator.sendBeacon("/online/leave", JSON.stringify({ chat_id: myId }));
 });
 
-async function refreshList() {
-    const res = await fetch("/online/list");
-    const users = await res.json();
-    const list = document.getElementById("user-list");
-    const others = users.filter(u => String(u.chat_id) !== String(myId));
-    if (others.length === 0) {
-        list.innerHTML = '<div style="padding:14px;color:var(--tg-theme-hint-color);font-size:14px;text-align:center">Никого онлайн</div>';
+// ============================
+// UI
+// ============================
+
+function showScreen(id) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+}
+
+function renderSessions() {
+    const sessions = getSessions();
+    const list = document.getElementById("sessions-list");
+
+    if (sessions.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">🔐</div>
+                <p>Нет активных сессий.<br>Нажмите «+ Новая» чтобы начать.</p>
+            </div>`;
         return;
     }
-    list.innerHTML = others.map(u => `
-        <div class="user-item" onclick="startChat('${u.chat_id}', '${u.first_name}')">
-            <div class="online-dot"></div>
-            <div>
-                <div class="user-name">${u.first_name}</div>
-                ${u.username ? `<div class="user-username">@${u.username}</div>` : ""}
-            </div>
-        </div>
-    `).join("");
+
+    let html = "";
+
+    // Active / pending outgoing
+    const mine = sessions.filter(s => !s.incoming);
+    if (mine.length > 0) {
+        html += `<div class="section-title">Мои сессии</div>`;
+        mine.forEach(s => {
+            const expired = isExpired(s);
+            const statusClass = expired ? "expired" : s.status === "active" ? "active" : "pending";
+            const statusText = expired ? "Истёк" : s.status === "active" ? "Активна" : "Ожидание";
+            const initial = (s.theirName || "?")[0].toUpperCase();
+            html += `
+                <div class="session-item" onclick="openSession('${s.id}')">
+                    <div class="session-avatar">${initial}</div>
+                    <div class="session-info">
+                        <div class="session-name">${s.theirName}</div>
+                        <div class="session-sub">${expiresLabel(s)}</div>
+                    </div>
+                    <span class="badge ${statusClass}">${statusText}</span>
+                </div>`;
+        });
+    }
+
+    list.innerHTML = html;
+}
+
+function renderIncoming(items) {
+    const sec = document.getElementById("incoming-section");
+    if (!items || items.length === 0) { sec.innerHTML = ""; return; }
+
+    let html = `<div class="section-title">Входящие запросы</div>`;
+    items.forEach(item => {
+        const ts = new Date(item.timestamp * 1000).toLocaleTimeString("ru", {hour:"2-digit",minute:"2-digit"});
+        html += `
+            <div class="incoming-card">
+                <div class="incoming-name">🔐 ${item.from_name}</div>
+                <div class="incoming-sub">Запрос в ${ts}</div>
+                <div class="incoming-actions">
+                    <button class="btn success small" onclick="acceptSession('${item.from_id}','${item.from_name}','${item.pubkey}',${JSON.stringify(item.expires_in)})">Принять</button>
+                    <button class="btn danger small" onclick="declineSession('${item.from_id}')">Отклонить</button>
+                </div>
+            </div>`;
+    });
+    sec.innerHTML = html;
 }
 
 // ============================
-// CHAT + DH FLOW
+// TTL SELECT
 // ============================
 
-async function startChat(chatId, name) {
-    recipientId = chatId;
-    recipientName = name;
-    aesKey = null;
-    myKeyPair = null;
-    myPubKeyB64 = null;
+document.querySelectorAll(".ttl-option").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll(".ttl-option").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        selectedTTL = btn.dataset.ttl ? parseInt(btn.dataset.ttl) : null;
+    });
+});
 
-    document.getElementById("recipient-label").innerText = name;
-    document.getElementById("screen-online").style.display = "none";
-    document.getElementById("screen-chat").style.display = "flex";
-    document.getElementById("chat-box").innerHTML = "";
-    document.getElementById("msg-input").disabled = true;
-    document.getElementById("send-btn").disabled = true;
-    document.getElementById("crypto-status-badge").className = "status-badge status-wait";
-    document.getElementById("crypto-status-badge").innerText = "Обмен ключами...";
-    document.getElementById("their-pubkey-display").innerText = "ожидание...";
-    document.getElementById("aes-key-display").innerText = "не согласован";
+// ============================
+// CREATE SESSION
+// ============================
 
-    // Генерируем ключи
-    myKeyPair = await generateKeyPair();
-    myPubKeyB64 = await exportPubKey(myKeyPair.publicKey);
-    document.getElementById("my-pubkey-display").innerText = myPubKeyB64;
+async function createSession() {
+    const usernameInput = document.getElementById("new-username").value.trim();
+    const errEl = document.getElementById("new-error");
+    const btn = document.getElementById("new-submit-btn");
 
-    // Открываем крипто панель чтобы пользователь видел процесс
-    document.getElementById("crypto-panel").open = true;
+    errEl.innerText = "";
+    if (!usernameInput) { errEl.innerText = "Введите username"; return; }
 
-    // Отправляем dh_init собеседнику
-    await sendPayload({ type: "dh_init", pubkey: myPubKeyB64 });
-}
+    btn.disabled = true;
+    btn.innerText = "Поиск...";
 
-function goBack() {
-    recipientId = null;
-    document.getElementById("screen-online").style.display = "block";
-    document.getElementById("screen-chat").style.display = "none";
-    refreshList();
-}
+    // Резолвим username → chat_id
+    const res = await fetch("/resolve?username=" + encodeURIComponent(usernameInput));
+    const data = await res.json();
 
-async function sendPayload(payload) {
-    await fetch("/send", {
+    if (!data.ok) {
+        errEl.innerText = data.error;
+        btn.disabled = false;
+        btn.innerText = "Создать и отправить запрос";
+        return;
+    }
+
+    const theirId = String(data.chat_id);
+    const sid = sessionId(myId, theirId);
+    const theirName = usernameInput.startsWith("@") ? usernameInput : "@" + usernameInput;
+
+    btn.innerText = "Генерация ключей...";
+
+    // Генерируем ECDH пару
+    const kp = await generateKeyPair();
+    const myPubKeyB64 = await exportPubKey(kp.publicKey);
+    const myPrivKeyJwk = await exportPrivKey(kp.privateKey);
+
+    const expiresAt = selectedTTL ? Date.now() + selectedTTL * 1000 : null;
+
+    // Сохраняем сессию
+    upsertSession({
+        id: sid,
+        theirId,
+        theirName,
+        status: "pending",
+        createdAt: Date.now(),
+        expiresAt,
+        myPubKeyB64,
+        myPrivKeyJwk,
+        theirPubKeyB64: null,
+        aesKeyHex: null,
+        incoming: false
+    });
+
+    // Отправляем dh_init
+    await fetch("/session/init", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ to_id: recipientId, from_id: myId, payload })
+        body: JSON.stringify({
+            to_id: theirId,
+            from_id: myId,
+            from_name: myName + (myUsername ? " @" + myUsername : ""),
+            pubkey: myPubKeyB64,
+            expires_in: selectedTTL || null
+        })
     });
+
+    btn.disabled = false;
+    btn.innerText = "Создать и отправить запрос";
+    document.getElementById("new-username").value = "";
+
+    renderSessions();
+    showScreen("screen-sessions");
 }
 
-function addMessage(plaintext, ciphertext_b64, fromMe) {
+// ============================
+// ACCEPT INCOMING SESSION
+// ============================
+
+async function acceptSession(fromId, fromName, theirPubKeyB64, expiresIn) {
+    // Генерируем свои ключи
+    const kp = await generateKeyPair();
+    const myPubKeyB64 = await exportPubKey(kp.publicKey);
+    const myPrivKeyJwk = await exportPrivKey(kp.privateKey);
+
+    // Деривируем AES
+    const theirPub = await importPubKey(theirPubKeyB64);
+    const aesKey = await deriveAES(kp.privateKey, theirPub);
+    const aesKeyHex = await aesKeyToHex(aesKey);
+
+    const expiresAt = expiresIn ? Date.now() + expiresIn * 1000 : null;
+    const sid = sessionId(myId, fromId);
+
+    upsertSession({
+        id: sid,
+        theirId: fromId,
+        theirName: fromName,
+        status: "active",
+        createdAt: Date.now(),
+        expiresAt,
+        myPubKeyB64,
+        myPrivKeyJwk,
+        theirPubKeyB64,
+        aesKeyHex,
+        incoming: false
+    });
+
+    // Отправляем dh_response
+    await fetch("/session/respond", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            to_id: fromId,
+            from_id: myId,
+            from_name: myName + (myUsername ? " @" + myUsername : ""),
+            pubkey: myPubKeyB64
+        })
+    });
+
+    // Убираем из входящих
+    document.getElementById("incoming-section").innerHTML = "";
+
+    renderSessions();
+    openSession(sid);
+}
+
+async function declineSession(fromId) {
+    await fetch("/session/decline", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ to_id: fromId, from_id: myId })
+    });
+    renderIncoming([]);
+}
+
+// ============================
+// OPEN CHAT
+// ============================
+
+async function openSession(sid) {
+    const session = getSession(sid);
+    if (!session) return;
+
+    currentSessionId = sid;
+    currentAESKey = null;
+
+    if (session.aesKeyHex) {
+        currentAESKey = await hexToAESKey(session.aesKeyHex);
+    }
+
+    // Обновляем крипто панель
+    document.getElementById("cp-my-pubkey").innerText = session.myPubKeyB64 || "—";
+    document.getElementById("cp-their-pubkey").innerText = session.theirPubKeyB64 || "ожидание...";
+    document.getElementById("cp-aes-key").innerText = session.aesKeyHex || "не согласован";
+    document.getElementById("cp-expires").innerText = expiresLabel(session);
+
+    // Заголовок
+    document.getElementById("chat-title").innerText = session.theirName;
+
+    const expired = isExpired(session);
+    const badge = document.getElementById("chat-status-badge");
+    if (expired) {
+        badge.className = "badge expired"; badge.innerText = "Истёк";
+    } else if (session.status === "active") {
+        badge.className = "badge active"; badge.innerText = "Активна";
+    } else {
+        badge.className = "badge pending"; badge.innerText = "Ожидание";
+    }
+
+    // Показываем/скрываем поле ввода
+    const canChat = session.status === "active" && !expired;
+    document.getElementById("chat-input-row").style.display = canChat ? "flex" : "none";
+    document.getElementById("chat-pending-notice").style.display = canChat ? "none" : "block";
+    if (!canChat && !expired) {
+        document.getElementById("chat-pending-notice").innerText = "⏳ Ожидание ответа собеседника...";
+    }
+    if (expired) {
+        document.getElementById("chat-pending-notice").style.display = "block";
+        document.getElementById("chat-pending-notice").innerText = "🔒 Сессия истекла. Создайте новую.";
+    }
+
+    // Загружаем историю
+    const box = document.getElementById("chat-box");
+    box.innerHTML = "";
+    const msgs = getMessages(sid);
+    for (const msg of msgs) {
+        renderMessage(msg.plaintext, msg.ciphertext, msg.fromMe, msg.ts);
+    }
+
+    showScreen("screen-chat");
+}
+
+function renderMessage(plaintext, ciphertext, fromMe, ts) {
     const box = document.getElementById("chat-box");
     const wrap = document.createElement("div");
     wrap.className = "msg-wrap " + (fromMe ? "me" : "them");
@@ -423,12 +794,18 @@ function addMessage(plaintext, ciphertext_b64, fromMe) {
     bubble.innerText = plaintext;
     wrap.appendChild(bubble);
 
-    // показываем зашифрованный вид под сообщением
-    if (ciphertext_b64) {
+    if (ciphertext) {
         const cipher = document.createElement("div");
         cipher.className = "msg-cipher";
-        cipher.innerText = "🔒 " + ciphertext_b64.slice(0, 40) + "...";
+        cipher.innerText = "🔒 " + ciphertext.slice(0, 32) + "...";
         wrap.appendChild(cipher);
+    }
+
+    if (ts) {
+        const time = document.createElement("div");
+        time.className = "msg-time";
+        time.innerText = new Date(ts).toLocaleTimeString("ru", {hour:"2-digit",minute:"2-digit"});
+        wrap.appendChild(time);
     }
 
     box.appendChild(wrap);
@@ -436,16 +813,30 @@ function addMessage(plaintext, ciphertext_b64, fromMe) {
 }
 
 async function sendMsg() {
-    if (!aesKey || !recipientId) return;
+    if (!currentAESKey || !currentSessionId) return;
+    const session = getSession(currentSessionId);
+    if (!session || isExpired(session)) return;
+
     const input = document.getElementById("msg-input");
     const text = input.value.trim();
     if (!text) return;
 
-    const { iv, ciphertext } = await encryptMsg(text);
-    addMessage(text, ciphertext, true);
+    const { iv, ciphertext } = await encryptMsg(currentAESKey, text);
+    const ts = Date.now();
+
+    renderMessage(text, ciphertext, true, ts);
+    saveMessage(currentSessionId, { plaintext: text, ciphertext, iv, fromMe: true, ts });
     input.value = "";
 
-    await sendPayload({ type: "msg", iv, ciphertext });
+    await fetch("/send", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            to_id: session.theirId,
+            from_id: myId,
+            payload: { type: "msg", iv, ciphertext }
+        })
+    });
 }
 
 document.getElementById("msg-input").addEventListener("keydown", e => {
@@ -456,81 +847,86 @@ document.getElementById("msg-input").addEventListener("keydown", e => {
 // POLLING
 // ============================
 
-async function pollMessages() {
+async function poll() {
     if (!myId) return;
-    const res = await fetch("/messages/poll?chat_id=" + myId);
-    const msgs = await res.json();
+
+    // Входящие dh_init
+    const pendingRes = await fetch("/session/pending?chat_id=" + myId);
+    const pendingItems = await pendingRes.json();
+    renderIncoming(pendingItems);
+
+    // Сообщения из inbox
+    const msgsRes = await fetch("/messages/poll?chat_id=" + myId);
+    const msgs = await msgsRes.json();
 
     for (const msg of msgs) {
         const { from_id, payload } = msg;
 
-        if (payload.type === "dh_init") {
-            // Если мы не в чате — открываем автоматически
-            if (!recipientId) {
-                recipientId = from_id;
-                recipientName = "Собеседник";
-                document.getElementById("recipient-label").innerText = recipientName;
-                document.getElementById("screen-online").style.display = "none";
-                document.getElementById("screen-chat").style.display = "flex";
-                document.getElementById("chat-box").innerHTML = "";
-                document.getElementById("crypto-panel").open = true;
-            }
+        if (payload.type === "dh_response") {
+            // Наш dh_init приняли — деривируем AES
+            const sid = sessionId(myId, from_id);
+            const session = getSession(sid);
+            if (!session || session.status === "active") continue;
 
-            // Если мы уже отправили dh_init (дедлок) — используем уже готовую пару
-            // Если нет — генерируем новую
-            if (!myKeyPair) {
-                myKeyPair = await generateKeyPair();
-                myPubKeyB64 = await exportPubKey(myKeyPair.publicKey);
-                document.getElementById("my-pubkey-display").innerText = myPubKeyB64;
-            }
-
-            // Деривируем AES из их публичного ключа + наш приватный
+            const privKey = await importPrivKey(session.myPrivKeyJwk);
             const theirPub = await importPubKey(payload.pubkey);
-            document.getElementById("their-pubkey-display").innerText = payload.pubkey;
-            aesKey = await deriveAES(myKeyPair.privateKey, theirPub);
-            const keyHex = await getAESKeyHex();
-            document.getElementById("aes-key-display").innerText = keyHex;
-            document.getElementById("crypto-status-badge").className = "status-badge status-ok";
-            document.getElementById("crypto-status-badge").innerText = "✓ Зашифровано";
-            document.getElementById("msg-input").disabled = false;
-            document.getElementById("send-btn").disabled = false;
+            const aesKey = await deriveAES(privKey, theirPub);
+            const aesKeyHex = await aesKeyToHex(aesKey);
 
-            // Отвечаем своим публичным ключом
-            await fetch("/send", {
-                method: "POST",
-                headers: {"Content-Type":"application/json"},
-                body: JSON.stringify({ to_id: from_id, from_id: myId, payload: { type: "dh_response", pubkey: myPubKeyB64 } })
+            upsertSession({
+                ...session,
+                status: "active",
+                theirPubKeyB64: payload.pubkey,
+                aesKeyHex,
+                theirName: payload.from_name || session.theirName
             });
 
-        } else if (payload.type === "dh_response") {
-            // Получили ответный ключ — деривируем AES (если ещё не сделали)
-            if (aesKey) return; // уже согласовали через dh_init путь
-            const theirPub = await importPubKey(payload.pubkey);
-            document.getElementById("their-pubkey-display").innerText = payload.pubkey;
-            aesKey = await deriveAES(myKeyPair.privateKey, theirPub);
-            const keyHex = await getAESKeyHex();
-            document.getElementById("aes-key-display").innerText = keyHex;
-            document.getElementById("crypto-status-badge").className = "status-badge status-ok";
-            document.getElementById("crypto-status-badge").innerText = "✓ Зашифровано";
-            document.getElementById("msg-input").disabled = false;
-            document.getElementById("send-btn").disabled = false;
+            // Если сейчас открыт этот чат — обновляем
+            if (currentSessionId === sid) {
+                currentAESKey = aesKey;
+                document.getElementById("cp-their-pubkey").innerText = payload.pubkey;
+                document.getElementById("cp-aes-key").innerText = aesKeyHex;
+                document.getElementById("chat-status-badge").className = "badge active";
+                document.getElementById("chat-status-badge").innerText = "Активна";
+                document.getElementById("chat-input-row").style.display = "flex";
+                document.getElementById("chat-pending-notice").style.display = "none";
+            }
+
+            renderSessions();
 
         } else if (payload.type === "msg") {
-            if (!aesKey) continue;
+            // Входящее зашифрованное сообщение
+            const sid = sessionId(myId, from_id);
+            const session = getSession(sid);
+            if (!session || !session.aesKeyHex) continue;
+
+            let aesKey = currentSessionId === sid ? currentAESKey : null;
+            if (!aesKey) aesKey = await hexToAESKey(session.aesKeyHex);
+
             try {
-                const plaintext = await decryptMsg(payload.iv, payload.ciphertext);
-                addMessage(plaintext, payload.ciphertext, false);
+                const plaintext = await decryptMsg(aesKey, payload.iv, payload.ciphertext);
+                const ts = Date.now();
+                saveMessage(sid, { plaintext, ciphertext: payload.ciphertext, iv: payload.iv, fromMe: false, ts });
+
+                if (currentSessionId === sid) {
+                    renderMessage(plaintext, payload.ciphertext, false, ts);
+                }
             } catch(e) {
-                addMessage("[ошибка расшифровки]", null, false);
+                console.error("Decrypt failed", e);
             }
         }
     }
 }
 
-setInterval(pollMessages, 2000);
+setInterval(poll, 2000);
+
+// ============================
+// INIT
+// ============================
 
 joinOnline();
-refreshList();
+renderSessions();
+poll();
 </script>
 
 </body>
