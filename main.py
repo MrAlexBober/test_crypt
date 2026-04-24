@@ -76,7 +76,9 @@ async def online_join(request: Request):
 @app.post("/online/ping")
 async def online_ping(request: Request):
     data = await request.json()
-    chat_id = str(data["chat_id"])
+    chat_id = str(data.get("chat_id", ""))
+    if not chat_id or chat_id == "None" or chat_id == "undefined":
+        return {"ok": False}
     if chat_id in online_users:
         online_users[chat_id]["last_seen"] = time.time()
     return {"ok": True}
