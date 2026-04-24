@@ -4,9 +4,10 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 import time
 import json
+import os
 
-TOKEN = "8705414475:AAGJsY7sDIPapEyRtxC_fH3NEyivSX_h-N8"
-WEBAPP_URL = "https://testcrypt-production.up.railway.app"
+TOKEN = os.environ.get("TOKEN", "YOUR_BOT_TOKEN_HERE")
+WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://testcrypt-production.up.railway.app")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
