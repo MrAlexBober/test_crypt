@@ -137,9 +137,21 @@ async function sendMsg() {
     await fetch("/send", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ chat_id: recipientId, text: text })
+        body: JSON.stringify({ chat_id: recipientId, from_id: myId, text: text })
     });
 }
+
+// --- поллинг входящих ---
+async function pollMessages() {
+    if (!myId) return;
+    const res = await fetch("/messages/poll?chat_id=" + myId);
+    const msgs = await res.json();
+    for (const msg of msgs) {
+        addMessage(msg.text, false);
+    }
+}
+
+setInterval(pollMessages, 2000);
 
 // --- старт ---
 joinOnline();

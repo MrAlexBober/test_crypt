@@ -18,6 +18,9 @@ online_users = {}
 
 ONLINE_TIMEOUT = 30  # секунд без пинга — считаем офлайн
 
+# chat_id -> [{"from_id": ..., "text": ...}, ...]
+inbox = {}
+
 
 def get_online_list():
     now = time.time()
@@ -90,10 +93,25 @@ async def online_list():
 @app.post("/send")
 async def send_message(request: Request):
     data = await request.json()
-    chat_id = data["chat_id"]
+    to_id = str(data["chat_id"])
+    from_id = str(data["from_id"])
     text = data["text"]
-    await bot.send_message(chat_id, f"#LOL#{text}")
+
+    if to_id not in inbox:
+        inbox[to_id] = []
+    inbox[to_id].append({"from_id": from_id, "text": text})
+
+    await bot.send_message(to_id, f"#LOL#{text}")
     return {"ok": True}
+
+
+# -------------------------
+# POLL MESSAGES
+# -------------------------
+@app.get("/messages/poll")
+async def poll_messages(chat_id: str):
+    msgs = inbox.pop(chat_id, [])
+    return JSONResponse(msgs)
 
 
 # -------------------------
