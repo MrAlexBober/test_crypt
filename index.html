@@ -465,8 +465,7 @@ async function pollMessages() {
         const { from_id, payload } = msg;
 
         if (payload.type === "dh_init") {
-            // Мы получили публичный ключ инициатора
-            // Если мы не в чате с этим пользователем — открываем чат автоматически
+            // Если мы не в чате — открываем автоматически
             if (!recipientId) {
                 recipientId = from_id;
                 recipientName = "Собеседник";
@@ -475,13 +474,17 @@ async function pollMessages() {
                 document.getElementById("screen-chat").style.display = "flex";
                 document.getElementById("chat-box").innerHTML = "";
                 document.getElementById("crypto-panel").open = true;
+            }
 
+            // Если мы уже отправили dh_init (дедлок) — используем уже готовую пару
+            // Если нет — генерируем новую
+            if (!myKeyPair) {
                 myKeyPair = await generateKeyPair();
                 myPubKeyB64 = await exportPubKey(myKeyPair.publicKey);
                 document.getElementById("my-pubkey-display").innerText = myPubKeyB64;
             }
 
-            // Получаем их ключ, деривируем AES
+            // Деривируем AES из их публичного ключа + наш приватный
             const theirPub = await importPubKey(payload.pubkey);
             document.getElementById("their-pubkey-display").innerText = payload.pubkey;
             aesKey = await deriveAES(myKeyPair.privateKey, theirPub);
@@ -492,7 +495,7 @@ async function pollMessages() {
             document.getElementById("msg-input").disabled = false;
             document.getElementById("send-btn").disabled = false;
 
-            // Отправляем dh_response
+            // Отвечаем своим публичным ключом
             await fetch("/send", {
                 method: "POST",
                 headers: {"Content-Type":"application/json"},
@@ -500,7 +503,8 @@ async function pollMessages() {
             });
 
         } else if (payload.type === "dh_response") {
-            // Инициатор получил ответный ключ
+            // Получили ответный ключ — деривируем AES (если ещё не сделали)
+            if (aesKey) return; // уже согласовали через dh_init путь
             const theirPub = await importPubKey(payload.pubkey);
             document.getElementById("their-pubkey-display").innerText = payload.pubkey;
             aesKey = await deriveAES(myKeyPair.privateKey, theirPub);
