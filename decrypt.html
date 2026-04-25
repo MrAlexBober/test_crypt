@@ -197,11 +197,17 @@ async function decrypt() {
     document.getElementById("result").style.display = "none";
 
     try {
-        const hexKey = keyData.aes_key_hex;
-        const keyBytes = new Uint8Array(hexKey.match(/.{2}/g).map(b => parseInt(b, 16)));
-        const aesKey = await crypto.subtle.importKey(
-            "raw", keyBytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
-        );
+        // Строим map: epoch -> CryptoKey (поддержка старого формата с aes_key_hex)
+        const rawKeys = keyData.keys || (keyData.aes_key_hex ? [{ epoch: 0, aesKeyHex: keyData.aes_key_hex }] : []);
+        if (!rawKeys.length) { showError("В файле ключей не найдено ни одного ключа"); return; }
+
+        const epochKeyMap = {};
+        for (const k of rawKeys) {
+            const bytes = new Uint8Array(k.aesKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+            epochKeyMap[k.epoch] = await crypto.subtle.importKey(
+                "raw", bytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
+            );
+        }
 
         const msgs = msgsData.messages || [];
         const list = document.getElementById("msg-list");
@@ -215,15 +221,19 @@ async function decrypt() {
             const bubble = document.createElement("div");
             bubble.className = "msg-bubble";
 
+            const epoch = m.keyEpoch ?? 0;
+            const aesKey = epochKeyMap[epoch];
+
             try {
+                if (!aesKey) throw new Error("нет ключа для эпохи " + epoch);
                 const buf = await crypto.subtle.decrypt(
                     { name: "AES-GCM", iv: fromB64(m.iv) },
                     aesKey,
                     fromB64(m.ciphertext)
                 );
                 bubble.textContent = new TextDecoder().decode(buf);
-            } catch {
-                bubble.textContent = "[не удалось расшифровать]";
+            } catch (e) {
+                bubble.textContent = `[не удалось расшифровать: ${e.message}]`;
                 bubble.style.opacity = "0.5";
                 failed++;
             }
@@ -232,7 +242,7 @@ async function decrypt() {
 
             const time = document.createElement("div");
             time.className = "msg-time";
-            time.textContent = new Date(m.time).toLocaleString("ru");
+            time.textContent = new Date(m.time).toLocaleString("ru") + (rawKeys.length > 1 ? ` · ключ #${epoch}` : "");
             wrap.appendChild(time);
 
             list.appendChild(wrap);
@@ -241,7 +251,7 @@ async function decrypt() {
         document.getElementById("result-title").textContent =
             `Переписка с ${msgsData.with || keyData.with || "?"}`;
         document.getElementById("result-stats").textContent =
-            `${msgs.length} сообщений` + (failed ? `, ${failed} не расшифровано` : ", все расшифрованы ✓");
+            `${msgs.length} сообщений, ${rawKeys.length} эпох ключей` + (failed ? `, ${failed} не расшифровано` : " — все расшифрованы ✓");
         document.getElementById("result").style.display = "block";
 
     } catch(e) {

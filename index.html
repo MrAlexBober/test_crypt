@@ -644,6 +644,20 @@ function isExpired(session) {
     return session.expiresAt && Date.now() > session.expiresAt;
 }
 
+function migrateSession(session) {
+    if (!session.keys) {
+        session.keys = session.aesKeyHex ? [{ epoch: 0, aesKeyHex: session.aesKeyHex }] : [];
+        session.currentEpoch = 0;
+    }
+    return session;
+}
+
+async function getKeyForEpoch(session, epoch) {
+    const entry = (session.keys || []).find(k => k.epoch === epoch);
+    if (!entry) return null;
+    return await hexToAESKey(entry.aesKeyHex);
+}
+
 function expiresLabel(session) {
     if (!session.expiresAt) return "Навсегда";
     const d = new Date(session.expiresAt);
@@ -897,6 +911,8 @@ async function acceptSession(fromId, fromName, theirPubKeyB64, expiresIn) {
         myPrivKeyJwk,
         theirPubKeyB64,
         aesKeyHex,
+        keys: [{ epoch: 0, aesKeyHex }],
+        currentEpoch: 0,
         incoming: false
     });
 
@@ -939,9 +955,8 @@ async function openSession(sid) {
     currentSessionId = sid;
     currentAESKey = null;
 
-    if (session.aesKeyHex) {
-        currentAESKey = await hexToAESKey(session.aesKeyHex);
-    }
+    migrateSession(session);
+    currentAESKey = await getKeyForEpoch(session, session.currentEpoch);
 
     // Обновляем крипто панель
     document.getElementById("cp-my-pubkey").innerText = session.myPubKeyB64 || "—";
@@ -1028,9 +1043,10 @@ async function sendMsg() {
 
     const { iv, ciphertext } = await encryptMsg(currentAESKey, text);
     const ts = Date.now();
+    const keyEpoch = session.currentEpoch || 0;
 
     renderMessage(text, ciphertext, true, ts);
-    saveMessage(currentSessionId, { plaintext: text, ciphertext, iv, fromMe: true, ts });
+    saveMessage(currentSessionId, { plaintext: text, ciphertext, iv, fromMe: true, ts, keyEpoch });
     input.value = "";
 
     await fetch("/send", {
@@ -1039,7 +1055,7 @@ async function sendMsg() {
         body: JSON.stringify({
             to_id: session.theirId,
             from_id: myId,
-            payload: { type: "msg", iv, ciphertext }
+            payload: { type: "msg", iv, ciphertext, keyEpoch }
         })
     });
 }
@@ -1110,11 +1126,12 @@ function exportChat() {
         }))
     };
 
+    migrateSession(session);
     const keyData = {
         exported_at: new Date().toISOString(),
         with: session.theirName,
         algorithm: "AES-256-GCM",
-        aes_key_hex: session.aesKeyHex,
+        keys: session.keys,
         my_pubkey_b64: session.myPubKeyB64,
         their_pubkey_b64: session.theirPubKeyB64
     };
@@ -1158,6 +1175,8 @@ async function poll() {
                 status: "active",
                 theirPubKeyB64: payload.pubkey,
                 aesKeyHex,
+                keys: [{ epoch: 0, aesKeyHex }],
+                currentEpoch: 0,
                 theirName: payload.from_name || session.theirName
             });
 
@@ -1200,7 +1219,11 @@ async function poll() {
             const aesKey = await deriveAES(kp.privateKey, theirPub);
             const aesKeyHex = await aesKeyToHex(aesKey);
 
-            upsertSession({ ...session, myPubKeyB64, myPrivKeyJwk, theirPubKeyB64: payload.pubkey, aesKeyHex, status: "active" });
+            migrateSession(session);
+            const rkInitEpoch = session.currentEpoch + 1;
+            const rkInitKeys = [...session.keys, { epoch: rkInitEpoch, aesKeyHex }];
+
+            upsertSession({ ...session, myPubKeyB64, myPrivKeyJwk, theirPubKeyB64: payload.pubkey, aesKeyHex, keys: rkInitKeys, currentEpoch: rkInitEpoch, status: "active" });
 
             await fetch("/send", {
                 method: "POST",
@@ -1216,7 +1239,7 @@ async function poll() {
                 currentAESKey = aesKey;
                 document.getElementById("cp-my-pubkey").innerText = myPubKeyB64;
                 document.getElementById("cp-their-pubkey").innerText = payload.pubkey;
-                document.getElementById("cp-aes-key").innerText = aesKeyHex;
+                document.getElementById("cp-aes-key").innerText = aesKeyHex + ` (эпоха ${rkInitEpoch})`;
                 document.getElementById("chat-input-row").style.display = "flex";
                 document.getElementById("chat-pending-notice").style.display = "none";
             }
@@ -1232,30 +1255,47 @@ async function poll() {
             const aesKey = await deriveAES(privKey, theirPub);
             const aesKeyHex = await aesKeyToHex(aesKey);
 
-            upsertSession({ ...session, theirPubKeyB64: payload.pubkey, aesKeyHex, status: "active", rekeyPending: false });
+            migrateSession(session);
+            const rkRespEpoch = session.currentEpoch + 1;
+            const rkRespKeys = [...session.keys, { epoch: rkRespEpoch, aesKeyHex }];
+
+            upsertSession({
+                ...session,
+                theirPubKeyB64: payload.pubkey,
+                myPubKeyB64: session.pendingRekeyPubB64 || session.myPubKeyB64,
+                myPrivKeyJwk: session.pendingRekeyPrivJwk || session.myPrivKeyJwk,
+                aesKeyHex,
+                keys: rkRespKeys,
+                currentEpoch: rkRespEpoch,
+                status: "active",
+                pendingRekeyPrivJwk: null,
+                pendingRekeyPubB64: null
+            });
 
             if (currentSessionId === sid) {
                 currentAESKey = aesKey;
                 document.getElementById("cp-their-pubkey").innerText = payload.pubkey;
-                document.getElementById("cp-aes-key").innerText = aesKeyHex;
+                document.getElementById("cp-aes-key").innerText = aesKeyHex + ` (эпоха ${rkRespEpoch})`;
                 document.getElementById("chat-input-row").style.display = "flex";
                 document.getElementById("chat-pending-notice").style.display = "none";
-                document.getElementById("rekey-status").textContent = "✓ Ключ успешно обновлён!";
+                document.getElementById("rekey-status").textContent = `✓ Ключ обновлён (эпоха ${rkRespEpoch})`;
             }
 
         } else if (payload.type === "msg") {
-            // Входящее зашифрованное сообщение
             const sid = sessionId(myId, from_id);
             const session = getSession(sid);
-            if (!session || !session.aesKeyHex) continue;
+            if (!session) continue;
 
-            let aesKey = currentSessionId === sid ? currentAESKey : null;
-            if (!aesKey) aesKey = await hexToAESKey(session.aesKeyHex);
+            migrateSession(session);
+            const epoch = payload.keyEpoch ?? 0;
+            let aesKey = (currentSessionId === sid && epoch === session.currentEpoch) ? currentAESKey : null;
+            if (!aesKey) aesKey = await getKeyForEpoch(session, epoch);
+            if (!aesKey) { console.error("No key for epoch", epoch); continue; }
 
             try {
                 const plaintext = await decryptMsg(aesKey, payload.iv, payload.ciphertext);
                 const ts = Date.now();
-                saveMessage(sid, { plaintext, ciphertext: payload.ciphertext, iv: payload.iv, fromMe: false, ts });
+                saveMessage(sid, { plaintext, ciphertext: payload.ciphertext, iv: payload.iv, fromMe: false, ts, keyEpoch: epoch });
 
                 if (currentSessionId === sid) {
                     renderMessage(plaintext, payload.ciphertext, false, ts);
@@ -1313,8 +1353,8 @@ async function doRekey(existingPrivJwk) {
     const myPubKeyB64 = await exportPubKey(kp.publicKey);
     const myPrivKeyJwk = await exportPrivKey(kp.privateKey);
 
-    upsertSession({ ...session, myPubKeyB64, myPrivKeyJwk, theirPubKeyB64: null, aesKeyHex: null, status: "pending", rekeyPending: true });
-    currentAESKey = null;
+    // Сохраняем pending — старый ключ остаётся активным пока не придёт ответ
+    upsertSession({ ...session, pendingRekeyPrivJwk: myPrivKeyJwk, pendingRekeyPubB64: myPubKeyB64 });
 
     await fetch("/send", {
         method: "POST",
@@ -1326,13 +1366,7 @@ async function doRekey(existingPrivJwk) {
         })
     });
 
-    document.getElementById("rekey-status").textContent = "✓ Запрос отправлен. Ожидаем ответ собеседника.";
-    document.getElementById("cp-my-pubkey").innerText = myPubKeyB64;
-    document.getElementById("cp-their-pubkey").innerText = "ожидание...";
-    document.getElementById("cp-aes-key").innerText = "не согласован";
-    document.getElementById("chat-input-row").style.display = "none";
-    document.getElementById("chat-pending-notice").style.display = "block";
-    document.getElementById("chat-pending-notice").innerText = "🔄 Re-key: ожидание ответа собеседника...";
+    document.getElementById("rekey-status").textContent = "✓ Запрос отправлен. Можно продолжать переписку.";
 }
 
 async function doRekeyManual() {
@@ -1406,13 +1440,16 @@ async function decryptImported() {
     document.getElementById("dec-error").textContent = "";
     document.getElementById("dec-result").innerHTML = "";
     try {
-        const keyBytes = new Uint8Array(decKeyData.aes_key_hex.match(/.{2}/g).map(b => parseInt(b, 16)));
-        const aesKey = await crypto.subtle.importKey(
-            "raw", keyBytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
-        );
+        // Строим map: epoch -> CryptoKey
+        const rawKeys = decKeyData.keys || (decKeyData.aes_key_hex ? [{ epoch: 0, aesKeyHex: decKeyData.aes_key_hex }] : []);
+        const epochKeyMap = {};
+        for (const k of rawKeys) {
+            const bytes = new Uint8Array(k.aesKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+            epochKeyMap[k.epoch] = await crypto.subtle.importKey("raw", bytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+        }
 
         const msgs = decMsgsData.messages || [];
-        let html = `<div class="section-title" style="margin-top:16px">Переписка с ${decMsgsData.with || "?"} — ${msgs.length} сообщений</div>`;
+        let html = `<div class="section-title" style="margin-top:16px">Переписка с ${decMsgsData.with || "?"} — ${msgs.length} сообщений (${rawKeys.length} эпох ключей)</div>`;
 
         const box = document.createElement("div");
         box.style.display = "flex";
@@ -1426,20 +1463,24 @@ async function decryptImported() {
             const bubble = document.createElement("div");
             bubble.className = "msg-bubble";
 
+            const epoch = m.keyEpoch ?? 0;
+            const aesKey = epochKeyMap[epoch];
+
             try {
+                if (!aesKey) throw new Error("нет ключа для эпохи " + epoch);
                 const buf = await crypto.subtle.decrypt(
                     { name: "AES-GCM", iv: fromB64(m.iv) }, aesKey, fromB64(m.ciphertext)
                 );
                 bubble.textContent = new TextDecoder().decode(buf);
-            } catch {
-                bubble.textContent = "[не удалось расшифровать]";
+            } catch (e) {
+                bubble.textContent = `[не удалось расшифровать: ${e.message}]`;
                 bubble.style.opacity = "0.5";
             }
             wrap.appendChild(bubble);
 
             const time = document.createElement("div");
             time.className = "msg-time";
-            time.textContent = new Date(m.time).toLocaleString("ru");
+            time.textContent = new Date(m.time).toLocaleString("ru") + (rawKeys.length > 1 ? ` · ключ #${epoch}` : "");
             wrap.appendChild(time);
 
             box.appendChild(wrap);
