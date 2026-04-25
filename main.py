@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, MenuButtonWebApp
 import time
 import json
 import os
+import uuid
 
 TOKEN = os.environ.get("TOKEN", "YOUR_BOT_TOKEN_HERE")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "https://testcrypt-production.up.railway.app")
@@ -26,6 +27,9 @@ pending_dh = {}
 # временный буфер сообщений: chat_id -> [...]
 inbox = {}
 
+# подтверждения доставки: from_id -> [msg_id]
+acks = {}
+
 
 def get_online_list():
     now = time.time()
@@ -36,14 +40,24 @@ def get_online_list():
 
 
 # -------------------------
+# STARTUP
+# -------------------------
+@app.on_event("startup")
+async def on_startup():
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(text="Открыть чат", web_app=WebAppInfo(url=WEBAPP_URL))
+    )
+
+
+# -------------------------
 # BOT HANDLERS
 # -------------------------
 @dp.message()
 async def handle_message(message: types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Open Chat", web_app=WebAppInfo(url=WEBAPP_URL))
+        InlineKeyboardButton(text="Открыть чат", web_app=WebAppInfo(url=WEBAPP_URL))
     ]])
-    await message.answer("Открой чат:", reply_markup=keyboard)
+    await message.answer("Нажми кнопку рядом с полем ввода или здесь:", reply_markup=keyboard)
 
 
 # -------------------------
@@ -242,14 +256,30 @@ async def send_message(request: Request):
     from_id = str(data["from_id"])
     payload = data["payload"]
 
+    msg_id = str(uuid.uuid4())
+    payload["msg_id"] = msg_id
+
     if to_id not in inbox:
         inbox[to_id] = []
     inbox[to_id].append({"from_id": from_id, "payload": payload})
 
-    # Шифротекст виден в Telegram чате для прозрачности
     ct = payload.get("ciphertext", "")[:40]
-    await bot.send_message(to_id, f"🔒 <code>{ct}...</code>", parse_mode="HTML")
+    await bot.send_message(to_id, f"🔒 Новое сообщение от <b>{data.get('from_name', 'собеседника')}</b>\n<tg-spoiler>{ct}...</tg-spoiler>", parse_mode="HTML")
 
+    return {"ok": True, "msg_id": msg_id}
+
+
+# -------------------------
+# ACK (подтверждение доставки)
+# -------------------------
+@app.post("/ack")
+async def ack_message(request: Request):
+    data = await request.json()
+    from_id = str(data["from_id"])   # отправитель оригинального сообщения
+    msg_id = data["msg_id"]
+    if from_id not in acks:
+        acks[from_id] = []
+    acks[from_id].append(msg_id)
     return {"ok": True}
 
 
@@ -259,7 +289,8 @@ async def send_message(request: Request):
 @app.get("/messages/poll")
 async def poll_messages(chat_id: str):
     msgs = inbox.pop(chat_id, [])
-    return JSONResponse(msgs)
+    delivered = acks.pop(chat_id, [])
+    return JSONResponse({"messages": msgs, "delivered": delivered})
 
 
 # -------------------------

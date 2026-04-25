@@ -229,6 +229,8 @@
       margin-top: 2px;
       padding: 0 4px;
     }
+    .msg-status { color: var(--tg-theme-hint-color, #aaa); margin-left: 4px; }
+    .msg-status.delivered { color: #4caf50; }
 
     .chat-pending-notice {
       text-align: center;
@@ -998,16 +1000,17 @@ async function openSession(sid) {
     box.innerHTML = "";
     const msgs = getMessages(sid);
     for (const msg of msgs) {
-        renderMessage(msg.plaintext, msg.ciphertext, msg.fromMe, msg.ts);
+        renderMessage(msg.plaintext, msg.ciphertext, msg.fromMe, msg.ts, msg.msg_id);
     }
 
     showScreen("screen-chat");
 }
 
-function renderMessage(plaintext, ciphertext, fromMe, ts) {
+function renderMessage(plaintext, ciphertext, fromMe, ts, msgId) {
     const box = document.getElementById("chat-box");
     const wrap = document.createElement("div");
     wrap.className = "msg-wrap " + (fromMe ? "me" : "them");
+    if (msgId) wrap.dataset.msgId = msgId;
 
     const bubble = document.createElement("div");
     bubble.className = "msg-bubble";
@@ -1025,6 +1028,12 @@ function renderMessage(plaintext, ciphertext, fromMe, ts) {
         const time = document.createElement("div");
         time.className = "msg-time";
         time.innerText = new Date(ts).toLocaleTimeString("ru", {hour:"2-digit",minute:"2-digit"});
+        if (fromMe && msgId) {
+            const status = document.createElement("span");
+            status.className = "msg-status";
+            status.innerText = " ✓";
+            time.appendChild(status);
+        }
         wrap.appendChild(time);
     }
 
@@ -1044,20 +1053,22 @@ async function sendMsg() {
     const { iv, ciphertext } = await encryptMsg(currentAESKey, text);
     const ts = Date.now();
     const keyEpoch = session.currentEpoch || 0;
-
-    renderMessage(text, ciphertext, true, ts);
-    saveMessage(currentSessionId, { plaintext: text, ciphertext, iv, fromMe: true, ts, keyEpoch });
     input.value = "";
 
-    await fetch("/send", {
+    const res = await fetch("/send", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
             to_id: session.theirId,
             from_id: myId,
+            from_name: myName + (myUsername ? " @" + myUsername : ""),
             payload: { type: "msg", iv, ciphertext, keyEpoch }
         })
     });
+    const { msg_id } = await res.json();
+
+    renderMessage(text, ciphertext, true, ts, msg_id);
+    saveMessage(currentSessionId, { plaintext: text, ciphertext, iv, fromMe: true, ts, keyEpoch, msg_id });
 }
 
 document.getElementById("msg-input").addEventListener("keydown", e => {
@@ -1154,7 +1165,24 @@ async function poll() {
 
     // Сообщения из inbox
     const msgsRes = await fetch("/messages/poll?chat_id=" + myId);
-    const msgs = await msgsRes.json();
+    const pollData = await msgsRes.json();
+    const msgs = pollData.messages || [];
+    const delivered = pollData.delivered || [];
+
+    // Обновляем статус ✓ → ✓✓ для доставленных сообщений
+    for (const msg_id of delivered) {
+        const wrap = document.querySelector(`[data-msg-id="${msg_id}"]`);
+        if (wrap) {
+            const status = wrap.querySelector(".msg-status");
+            if (status) { status.innerText = " ✓✓"; status.className = "msg-status delivered"; }
+        }
+        // Обновляем в localStorage
+        if (currentSessionId) {
+            const allMsgs = getMessages(currentSessionId);
+            const m = allMsgs.find(m => m.msg_id === msg_id);
+            if (m) { m.delivered = true; localStorage.setItem("msgs_" + currentSessionId, JSON.stringify(allMsgs)); }
+        }
+    }
 
     for (const msg of msgs) {
         const { from_id, payload } = msg;
@@ -1299,6 +1327,15 @@ async function poll() {
 
                 if (currentSessionId === sid) {
                     renderMessage(plaintext, payload.ciphertext, false, ts);
+                }
+
+                // Подтверждаем доставку отправителю
+                if (payload.msg_id) {
+                    fetch("/ack", {
+                        method: "POST",
+                        headers: {"Content-Type":"application/json"},
+                        body: JSON.stringify({ from_id: from_id, msg_id: payload.msg_id })
+                    });
                 }
             } catch(e) {
                 console.error("Decrypt failed", e);
