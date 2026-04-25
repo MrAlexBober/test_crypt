@@ -343,7 +343,8 @@ async def file_send(
 # -------------------------
 @app.get("/file/download")
 async def file_download(file_id: str):
-    buf = await bot.download(file_id)
+    tg_file = await bot.get_file(file_id)
+    buf = await bot.download_file(tg_file.file_path)
     return Response(content=buf.read(), media_type="application/octet-stream")
 
 

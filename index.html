@@ -1149,6 +1149,12 @@ async function sendFile(file) {
     const { iv, encryptedBuffer } = await encryptFile(currentAESKey, buffer);
     const keyEpoch = session.currentEpoch || 0;
 
+    // Prepend IV (12 bytes) so the .enc file is self-contained for offline decryption
+    const ivBytes = fromB64(iv);
+    const combined = new Uint8Array(12 + encryptedBuffer.byteLength);
+    combined.set(ivBytes, 0);
+    combined.set(new Uint8Array(encryptedBuffer), 12);
+
     const formData = new FormData();
     formData.append("to_id", session.theirId);
     formData.append("from_id", myId);
@@ -1156,7 +1162,7 @@ async function sendFile(file) {
     formData.append("iv", iv);
     formData.append("orig_filename", file.name);
     formData.append("key_epoch", String(keyEpoch));
-    formData.append("file", new Blob([encryptedBuffer]), file.name + ".enc");
+    formData.append("file", new Blob([combined]), file.name + ".enc");
 
     const res = await fetch("/file/send", { method: "POST", body: formData });
     const { msg_id } = await res.json();
@@ -1164,26 +1170,72 @@ async function sendFile(file) {
     saveMessage(currentSessionId, { type: "file", orig_filename: file.name, fromMe: true, ts, msg_id, keyEpoch });
 }
 
-async function downloadFile(file_id, iv, orig_filename, keyEpoch) {
-    const session = getSession(currentSessionId);
-    if (!session) return;
+async function downloadFile(file_id, iv, orig_filename, keyEpoch, btn) {
+    if (btn) { btn.disabled = true; btn.innerText = "⏳ 0%"; }
+    try {
+        const session = getSession(currentSessionId);
+        if (!session) throw new Error("сессия не найдена");
 
-    const aesKey = await getKeyForEpoch(session, keyEpoch ?? 0);
-    if (!aesKey) { alert("Ключ для расшифровки не найден"); return; }
+        const aesKey = await getKeyForEpoch(session, keyEpoch ?? 0);
+        if (!aesKey) throw new Error("ключ эпохи " + (keyEpoch ?? 0) + " не найден");
 
-    const res = await fetch("/file/download?file_id=" + encodeURIComponent(file_id));
-    if (!res.ok) { alert("Ошибка скачивания"); return; }
+        const res = await fetch("/file/download?file_id=" + encodeURIComponent(file_id));
+        if (!res.ok) throw new Error("сервер вернул " + res.status);
 
-    const encBuffer = await res.arrayBuffer();
-    const decBuffer = await decryptFile(aesKey, iv, encBuffer);
+        // Читаем с прогрессом
+        const contentLength = parseInt(res.headers.get("content-length") || "0");
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (btn && contentLength) btn.innerText = `⏳ ${Math.round(received / contentLength * 100)}%`;
+        }
+        const encBuffer = new Uint8Array(received);
+        let offset = 0;
+        for (const chunk of chunks) { encBuffer.set(chunk, offset); offset += chunk.length; }
 
-    const blob = new Blob([decBuffer]);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = orig_filename;
-    a.click();
-    URL.revokeObjectURL(url);
+        if (btn) btn.innerText = "🔓 Расшифровка...";
+
+        const fileIv = toB64(encBuffer.slice(0, 12));
+        const decBuffer = await decryptFile(aesKey, fileIv, encBuffer.slice(12).buffer);
+
+        const blob = new Blob([decBuffer]);
+        const url = URL.createObjectURL(blob);
+
+        // Показываем ссылку для сохранения (надёжно на мобильном)
+        const wrap = btn ? btn.closest(".msg-wrap") : null;
+        if (wrap) {
+            const existing = wrap.querySelector(".save-link");
+            if (existing) existing.remove();
+            const link = document.createElement("a");
+            link.className = "save-link btn small";
+            link.href = url;
+            link.download = orig_filename;
+            link.innerText = "💾 Нажми чтобы сохранить";
+            link.style.display = "block";
+            link.style.marginTop = "6px";
+            link.style.textAlign = "center";
+            wrap.querySelector(".msg-bubble").appendChild(link);
+        }
+
+        // Пробуем автоскачивание (работает на Android/desktop)
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = orig_filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        if (btn) { btn.innerText = "✓ Готово"; }
+    } catch(e) {
+        console.error("downloadFile error:", e);
+        alert("Ошибка: " + e.message);
+        if (btn) { btn.disabled = false; btn.innerText = "⬇ Скачать и расшифровать"; }
+    }
 }
 
 function renderFileMessage(filename, fromMe, ts, msgId, file_id, iv, keyEpoch) {
@@ -1205,7 +1257,7 @@ function renderFileMessage(filename, fromMe, ts, msgId, file_id, iv, keyEpoch) {
         btn.className = "btn small";
         btn.style.marginTop = "4px";
         btn.innerText = "⬇ Скачать и расшифровать";
-        btn.onclick = () => downloadFile(file_id, iv, filename, keyEpoch);
+        btn.onclick = function() { downloadFile(file_id, iv, filename, keyEpoch, this); };
         bubble.appendChild(btn);
     }
 

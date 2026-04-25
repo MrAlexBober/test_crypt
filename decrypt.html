@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Decrypt Chat</title>
+  <title>Decrypt</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -13,7 +13,22 @@
       padding: 24px 16px;
     }
     h1 { font-size: 20px; margin-bottom: 6px; color: #fff; }
-    .subtitle { font-size: 13px; color: #888; margin-bottom: 24px; }
+    .subtitle { font-size: 13px; color: #888; margin-bottom: 20px; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 20px;
+      background: #0f3460;
+      color: #e0e0e0;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .tab.active { background: #e94560; color: #fff; }
+
+    .pane { display: none; }
+    .pane.active { display: block; }
 
     .card {
       background: #16213e;
@@ -28,11 +43,7 @@
       letter-spacing: 0.5px;
       margin-bottom: 8px;
     }
-    .file-input-wrap {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .file-input-wrap { display: flex; align-items: center; gap: 12px; }
     .file-btn {
       padding: 9px 16px;
       border: none;
@@ -44,8 +55,8 @@
       white-space: nowrap;
     }
     .file-btn:hover { background: #1a4a8a; }
-    .file-name { font-size: 13px; color: #888; }
-    .file-name.loaded { color: #4caf50; }
+    .fname { font-size: 13px; color: #888; }
+    .fname.loaded { color: #4caf50; }
 
     .btn {
       width: 100%;
@@ -59,8 +70,20 @@
       margin-bottom: 16px;
     }
     .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-small {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #0f3460;
+      color: #e0e0e0;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn-small:hover { background: #1a4a8a; }
 
-    .error { color: #e94560; font-size: 13px; margin-bottom: 12px; }
+    .error { color: #e94560; font-size: 13px; margin-bottom: 12px; min-height: 18px; }
+    .success { color: #4caf50; font-size: 13px; margin-bottom: 12px; }
 
     .key-info {
       font-family: monospace;
@@ -77,7 +100,6 @@
     .msg-wrap { display: flex; flex-direction: column; }
     .msg-wrap.me { align-items: flex-end; }
     .msg-wrap.them { align-items: flex-start; }
-
     .msg-bubble {
       max-width: 80%;
       padding: 9px 13px;
@@ -88,65 +110,142 @@
     }
     .msg-wrap.me .msg-bubble { background: #0f3460; color: #e0e0e0; border-bottom-right-radius: 4px; }
     .msg-wrap.them .msg-bubble { background: #16213e; color: #e0e0e0; border-bottom-left-radius: 4px; }
-
     .msg-time { font-size: 10px; color: #555; margin-top: 3px; padding: 0 4px; }
 
     .section-title {
-      font-size: 12px;
-      color: #555;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 12px;
+      font-size: 12px; color: #555; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 12px; margin-top: 4px;
     }
     .stats { font-size: 13px; color: #888; margin-bottom: 16px; }
 
     input[type="file"] { display: none; }
+
+    /* epoch selector */
+    .epoch-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .epoch-label { font-size: 13px; color: #888; }
+    select {
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: none;
+      background: #0f3460;
+      color: #e0e0e0;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
 
-<h1>🔐 Расшифровка чата</h1>
+<h1>🔐 Расшифровка</h1>
 <p class="subtitle">Работает полностью оффлайн. Никуда не отправляет данные.</p>
 
-<div class="card">
-  <div class="label">1. Файл с сообщениями (chat_*.json)</div>
-  <div class="file-input-wrap">
-    <button class="file-btn" onclick="document.getElementById('input-msgs').click()">Выбрать файл</button>
-    <span class="file-name" id="msgs-name">не выбран</span>
-  </div>
-  <input type="file" id="input-msgs" accept=".json" onchange="loadMsgsFile(this)">
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('chat')">💬 Чат</button>
+  <button class="tab" onclick="switchTab('file')">📎 Файл</button>
 </div>
 
-<div class="card">
-  <div class="label">2. Файл с ключом (key_*.json)</div>
-  <div class="file-input-wrap">
-    <button class="file-btn" onclick="document.getElementById('input-key').click()">Выбрать файл</button>
-    <span class="file-name" id="key-name">не выбран</span>
+<!-- ===================== ЧАТЬ ===================== -->
+<div class="pane active" id="pane-chat">
+
+  <div class="card">
+    <div class="label">1. Файл с сообщениями (chat_*.json)</div>
+    <div class="file-input-wrap">
+      <button class="file-btn" onclick="document.getElementById('input-msgs').click()">Выбрать файл</button>
+      <span class="fname" id="msgs-name">не выбран</span>
+    </div>
+    <input type="file" id="input-msgs" accept=".json" onchange="loadMsgsFile(this)">
   </div>
-  <input type="file" id="input-key" accept=".json" onchange="loadKeyFile(this)">
-  <div id="key-preview" style="display:none">
-    <div class="label" style="margin-top:10px">AES-256-GCM ключ</div>
-    <div class="key-info" id="key-preview-val"></div>
+
+  <div class="card">
+    <div class="label">2. Файл с ключом (key_*.json)</div>
+    <div class="file-input-wrap">
+      <button class="file-btn" onclick="document.getElementById('input-key').click()">Выбрать файл</button>
+      <span class="fname" id="key-name">не выбран</span>
+    </div>
+    <input type="file" id="input-key" accept=".json" onchange="loadKeyFile(this)">
+    <div id="key-preview" style="display:none">
+      <div class="label" style="margin-top:10px">Найдено эпох ключей</div>
+      <div class="key-info" id="key-preview-val"></div>
+    </div>
+  </div>
+
+  <div class="error" id="chat-error"></div>
+  <button class="btn" id="decrypt-btn" onclick="decryptChat()" disabled>Расшифровать переписку</button>
+
+  <div id="chat-result" style="display:none">
+    <div class="section-title" id="result-title"></div>
+    <div class="stats" id="result-stats"></div>
+    <div class="msg-list" id="msg-list"></div>
   </div>
 </div>
 
-<div class="error" id="error"></div>
+<!-- ===================== ФАЙЛ ===================== -->
+<div class="pane" id="pane-file">
 
-<button class="btn" id="decrypt-btn" onclick="decrypt()" disabled>Расшифровать</button>
+  <div class="card">
+    <div class="label">1. Зашифрованный файл (*.enc)</div>
+    <div class="file-input-wrap">
+      <button class="file-btn" onclick="document.getElementById('input-enc-file').click()">Выбрать файл</button>
+      <span class="fname" id="enc-file-name">не выбран</span>
+    </div>
+    <input type="file" id="input-enc-file" onchange="loadEncFile(this)">
+  </div>
 
-<div id="result" style="display:none">
-  <div class="section-title" id="result-title"></div>
-  <div class="stats" id="result-stats"></div>
-  <div class="msg-list" id="msg-list"></div>
+  <div class="card">
+    <div class="label">2. Файл с ключом (key_*.json)</div>
+    <div class="file-input-wrap">
+      <button class="file-btn" onclick="document.getElementById('input-file-key').click()">Выбрать файл</button>
+      <span class="fname" id="file-key-name">не выбран</span>
+    </div>
+    <input type="file" id="input-file-key" accept=".json" onchange="loadFileKey(this)">
+  </div>
+
+  <div id="epoch-row" class="epoch-row" style="display:none">
+    <span class="epoch-label">Эпоха ключа:</span>
+    <select id="epoch-select"></select>
+    <span class="epoch-label" id="epoch-hint"></span>
+  </div>
+
+  <div class="card" id="orig-name-card" style="display:none">
+    <div class="label">Оригинальное имя файла (после расшифровки)</div>
+    <input id="orig-filename-input" style="
+      width:100%; padding:9px 12px; border-radius:8px; border:none;
+      background:#0a0a1a; color:#e0e0e0; font-size:14px;
+    " placeholder="например: document.pdf">
+  </div>
+
+  <div class="error" id="file-error"></div>
+  <button class="btn" id="file-decrypt-btn" onclick="decryptFileLocal()" disabled>Расшифровать файл</button>
+  <div class="success" id="file-success"></div>
 </div>
 
 <script>
+// ===================== ОБЩЕЕ =====================
+
 let msgsData = null;
 let keyData = null;
+let encFileBuffer = null;
+let fileKeyData = null;
 
 function fromB64(b64) {
     return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
+
+async function buildEpochMap(rawKeys) {
+    const map = {};
+    for (const k of rawKeys) {
+        const bytes = new Uint8Array(k.aesKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+        map[k.epoch] = await crypto.subtle.importKey("raw", bytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    }
+    return map;
+}
+
+function switchTab(tab) {
+    document.querySelectorAll(".tab").forEach((t, i) => t.className = "tab" + (["chat","file"][i] === tab ? " active" : ""));
+    document.getElementById("pane-chat").className = "pane" + (tab === "chat" ? " active" : "");
+    document.getElementById("pane-file").className = "pane" + (tab === "file" ? " active" : "");
+}
+
+// ===================== ЧАТ =====================
 
 function loadMsgsFile(input) {
     const file = input.files[0];
@@ -156,11 +255,9 @@ function loadMsgsFile(input) {
         try {
             msgsData = JSON.parse(e.target.result);
             document.getElementById("msgs-name").textContent = file.name;
-            document.getElementById("msgs-name").className = "file-name loaded";
-            checkReady();
-        } catch {
-            showError("Ошибка чтения файла сообщений");
-        }
+            document.getElementById("msgs-name").className = "fname loaded";
+            checkChatReady();
+        } catch { document.getElementById("chat-error").textContent = "Ошибка чтения файла сообщений"; }
     };
     reader.readAsText(file);
 }
@@ -173,42 +270,31 @@ function loadKeyFile(input) {
         try {
             keyData = JSON.parse(e.target.result);
             document.getElementById("key-name").textContent = file.name;
-            document.getElementById("key-name").className = "file-name loaded";
-            document.getElementById("key-preview-val").textContent = keyData.aes_key_hex;
+            document.getElementById("key-name").className = "fname loaded";
+            const rawKeys = keyData.keys || (keyData.aes_key_hex ? [{ epoch: 0, aesKeyHex: keyData.aes_key_hex }] : []);
+            document.getElementById("key-preview-val").textContent = rawKeys.map(k => `#${k.epoch}: ${k.aesKeyHex.slice(0,16)}...`).join("\n");
             document.getElementById("key-preview").style.display = "block";
-            checkReady();
-        } catch {
-            showError("Ошибка чтения файла ключа");
-        }
+            checkChatReady();
+            // Если тот же ключ используется для файла — обновляем и там
+            fileKeyData = keyData;
+            onFileKeyLoaded();
+        } catch { document.getElementById("chat-error").textContent = "Ошибка чтения файла ключа"; }
     };
     reader.readAsText(file);
 }
 
-function checkReady() {
+function checkChatReady() {
     document.getElementById("decrypt-btn").disabled = !(msgsData && keyData);
 }
 
-function showError(msg) {
-    document.getElementById("error").textContent = msg;
-}
-
-async function decrypt() {
-    showError("");
-    document.getElementById("result").style.display = "none";
-
+async function decryptChat() {
+    document.getElementById("chat-error").textContent = "";
+    document.getElementById("chat-result").style.display = "none";
     try {
-        // Строим map: epoch -> CryptoKey (поддержка старого формата с aes_key_hex)
         const rawKeys = keyData.keys || (keyData.aes_key_hex ? [{ epoch: 0, aesKeyHex: keyData.aes_key_hex }] : []);
-        if (!rawKeys.length) { showError("В файле ключей не найдено ни одного ключа"); return; }
+        if (!rawKeys.length) { document.getElementById("chat-error").textContent = "Ключей не найдено"; return; }
 
-        const epochKeyMap = {};
-        for (const k of rawKeys) {
-            const bytes = new Uint8Array(k.aesKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
-            epochKeyMap[k.epoch] = await crypto.subtle.importKey(
-                "raw", bytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
-            );
-        }
-
+        const epochKeyMap = await buildEpochMap(rawKeys);
         const msgs = msgsData.messages || [];
         const list = document.getElementById("msg-list");
         list.innerHTML = "";
@@ -217,46 +303,127 @@ async function decrypt() {
         for (const m of msgs) {
             const wrap = document.createElement("div");
             wrap.className = "msg-wrap " + (m.from === "me" ? "me" : "them");
-
             const bubble = document.createElement("div");
             bubble.className = "msg-bubble";
-
             const epoch = m.keyEpoch ?? 0;
-            const aesKey = epochKeyMap[epoch];
-
             try {
-                if (!aesKey) throw new Error("нет ключа для эпохи " + epoch);
-                const buf = await crypto.subtle.decrypt(
-                    { name: "AES-GCM", iv: fromB64(m.iv) },
-                    aesKey,
-                    fromB64(m.ciphertext)
-                );
+                if (!epochKeyMap[epoch]) throw new Error("нет ключа #" + epoch);
+                const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(m.iv) }, epochKeyMap[epoch], fromB64(m.ciphertext));
                 bubble.textContent = new TextDecoder().decode(buf);
-            } catch (e) {
-                bubble.textContent = `[не удалось расшифровать: ${e.message}]`;
+            } catch(e) {
+                bubble.textContent = "[не расшифровано: " + e.message + "]";
                 bubble.style.opacity = "0.5";
                 failed++;
             }
-
             wrap.appendChild(bubble);
-
             const time = document.createElement("div");
             time.className = "msg-time";
             time.textContent = new Date(m.time).toLocaleString("ru") + (rawKeys.length > 1 ? ` · ключ #${epoch}` : "");
             wrap.appendChild(time);
-
             list.appendChild(wrap);
         }
 
-        document.getElementById("result-title").textContent =
-            `Переписка с ${msgsData.with || keyData.with || "?"}`;
-        document.getElementById("result-stats").textContent =
-            `${msgs.length} сообщений, ${rawKeys.length} эпох ключей` + (failed ? `, ${failed} не расшифровано` : " — все расшифрованы ✓");
-        document.getElementById("result").style.display = "block";
-
+        document.getElementById("result-title").textContent = `Переписка с ${msgsData.with || keyData.with || "?"}`;
+        document.getElementById("result-stats").textContent = `${msgs.length} сообщений, ${rawKeys.length} эпох` + (failed ? `, ${failed} не расшифровано` : " — все ✓");
+        document.getElementById("chat-result").style.display = "block";
     } catch(e) {
-        showError("Ошибка расшифровки: " + e.message);
+        document.getElementById("chat-error").textContent = "Ошибка: " + e.message;
     }
+}
+
+// ===================== ФАЙЛ =====================
+
+function loadEncFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        encFileBuffer = e.target.result;
+        document.getElementById("enc-file-name").textContent = file.name;
+        document.getElementById("enc-file-name").className = "fname loaded";
+        // Предзаполняем оригинальное имя (убираем .enc)
+        const origName = file.name.endsWith(".enc") ? file.name.slice(0, -4) : file.name;
+        document.getElementById("orig-filename-input").value = origName;
+        document.getElementById("orig-name-card").style.display = "block";
+        checkFileReady();
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function loadFileKey(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            fileKeyData = JSON.parse(e.target.result);
+            document.getElementById("file-key-name").textContent = file.name;
+            document.getElementById("file-key-name").className = "fname loaded";
+            onFileKeyLoaded();
+            checkFileReady();
+        } catch { document.getElementById("file-error").textContent = "Ошибка чтения файла ключа"; }
+    };
+    reader.readAsText(file);
+}
+
+function onFileKeyLoaded() {
+    if (!fileKeyData) return;
+    const rawKeys = fileKeyData.keys || (fileKeyData.aes_key_hex ? [{ epoch: 0, aesKeyHex: fileKeyData.aes_key_hex }] : []);
+    const sel = document.getElementById("epoch-select");
+    sel.innerHTML = rawKeys.map(k => `<option value="${k.epoch}">Эпоха #${k.epoch}</option>`).join("");
+    document.getElementById("epoch-hint").textContent = rawKeys.length + " доступно";
+    document.getElementById("epoch-row").style.display = rawKeys.length > 1 ? "flex" : "none";
+}
+
+function checkFileReady() {
+    document.getElementById("file-decrypt-btn").disabled = !(encFileBuffer && fileKeyData);
+}
+
+async function decryptFileLocal() {
+    document.getElementById("file-error").textContent = "";
+    document.getElementById("file-success").textContent = "";
+    const btn = document.getElementById("file-decrypt-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Расшифровка...";
+
+    try {
+        const rawKeys = fileKeyData.keys || (fileKeyData.aes_key_hex ? [{ epoch: 0, aesKeyHex: fileKeyData.aes_key_hex }] : []);
+        const selectedEpoch = parseInt(document.getElementById("epoch-select").value || "0");
+        const keyEntry = rawKeys.find(k => k.epoch === selectedEpoch) || rawKeys[rawKeys.length - 1];
+        if (!keyEntry) throw new Error("ключ не найден");
+
+        const keyBytes = new Uint8Array(keyEntry.aesKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+        const aesKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+
+        // IV — первые 12 байт зашифрованного файла
+        const encBytes = new Uint8Array(encFileBuffer);
+        const iv = encBytes.slice(0, 12);
+        const ciphertext = encBytes.slice(12);
+
+        let decBuffer;
+        try {
+            decBuffer = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, ciphertext);
+        } catch {
+            // Если не получилось с префиксным IV — пробуем как base64 IV из метаданных
+            throw new Error("не удалось расшифровать. Убедись что выбрана правильная эпоха ключа.");
+        }
+
+        const origName = document.getElementById("orig-filename-input").value.trim() || "decrypted_file";
+        const blob = new Blob([decBuffer]);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = origName;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        document.getElementById("file-success").textContent = `✓ Файл расшифрован и сохранён как "${origName}"`;
+    } catch(e) {
+        document.getElementById("file-error").textContent = "Ошибка: " + e.message;
+    }
+
+    btn.disabled = false;
+    btn.textContent = "Расшифровать файл";
 }
 </script>
 
