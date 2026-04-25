@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Decrypt Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+    h1 { font-size: 20px; margin-bottom: 6px; color: #fff; }
+    .subtitle { font-size: 13px; color: #888; margin-bottom: 24px; }
+
+    .card {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .file-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .file-btn {
+      padding: 9px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #0f3460;
+      color: #e0e0e0;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .file-btn:hover { background: #1a4a8a; }
+    .file-name { font-size: 13px; color: #888; }
+    .file-name.loaded { color: #4caf50; }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: #e94560;
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+      margin-bottom: 16px;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    .error { color: #e94560; font-size: 13px; margin-bottom: 12px; }
+
+    .key-info {
+      font-family: monospace;
+      font-size: 11px;
+      word-break: break-all;
+      color: #4caf50;
+      background: #0a0a1a;
+      padding: 8px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .msg-list { display: flex; flex-direction: column; gap: 10px; }
+    .msg-wrap { display: flex; flex-direction: column; }
+    .msg-wrap.me { align-items: flex-end; }
+    .msg-wrap.them { align-items: flex-start; }
+
+    .msg-bubble {
+      max-width: 80%;
+      padding: 9px 13px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .msg-wrap.me .msg-bubble { background: #0f3460; color: #e0e0e0; border-bottom-right-radius: 4px; }
+    .msg-wrap.them .msg-bubble { background: #16213e; color: #e0e0e0; border-bottom-left-radius: 4px; }
+
+    .msg-time { font-size: 10px; color: #555; margin-top: 3px; padding: 0 4px; }
+
+    .section-title {
+      font-size: 12px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .stats { font-size: 13px; color: #888; margin-bottom: 16px; }
+
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+<h1>🔐 Расшифровка чата</h1>
+<p class="subtitle">Работает полностью оффлайн. Никуда не отправляет данные.</p>
+
+<div class="card">
+  <div class="label">1. Файл с сообщениями (chat_*.json)</div>
+  <div class="file-input-wrap">
+    <button class="file-btn" onclick="document.getElementById('input-msgs').click()">Выбрать файл</button>
+    <span class="file-name" id="msgs-name">не выбран</span>
+  </div>
+  <input type="file" id="input-msgs" accept=".json" onchange="loadMsgsFile(this)">
+</div>
+
+<div class="card">
+  <div class="label">2. Файл с ключом (key_*.json)</div>
+  <div class="file-input-wrap">
+    <button class="file-btn" onclick="document.getElementById('input-key').click()">Выбрать файл</button>
+    <span class="file-name" id="key-name">не выбран</span>
+  </div>
+  <input type="file" id="input-key" accept=".json" onchange="loadKeyFile(this)">
+  <div id="key-preview" style="display:none">
+    <div class="label" style="margin-top:10px">AES-256-GCM ключ</div>
+    <div class="key-info" id="key-preview-val"></div>
+  </div>
+</div>
+
+<div class="error" id="error"></div>
+
+<button class="btn" id="decrypt-btn" onclick="decrypt()" disabled>Расшифровать</button>
+
+<div id="result" style="display:none">
+  <div class="section-title" id="result-title"></div>
+  <div class="stats" id="result-stats"></div>
+  <div class="msg-list" id="msg-list"></div>
+</div>
+
+<script>
+let msgsData = null;
+let keyData = null;
+
+function fromB64(b64) {
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+function loadMsgsFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            msgsData = JSON.parse(e.target.result);
+            document.getElementById("msgs-name").textContent = file.name;
+            document.getElementById("msgs-name").className = "file-name loaded";
+            checkReady();
+        } catch {
+            showError("Ошибка чтения файла сообщений");
+        }
+    };
+    reader.readAsText(file);
+}
+
+function loadKeyFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            keyData = JSON.parse(e.target.result);
+            document.getElementById("key-name").textContent = file.name;
+            document.getElementById("key-name").className = "file-name loaded";
+            document.getElementById("key-preview-val").textContent = keyData.aes_key_hex;
+            document.getElementById("key-preview").style.display = "block";
+            checkReady();
+        } catch {
+            showError("Ошибка чтения файла ключа");
+        }
+    };
+    reader.readAsText(file);
+}
+
+function checkReady() {
+    document.getElementById("decrypt-btn").disabled = !(msgsData && keyData);
+}
+
+function showError(msg) {
+    document.getElementById("error").textContent = msg;
+}
+
+async function decrypt() {
+    showError("");
+    document.getElementById("result").style.display = "none";
+
+    try {
+        const hexKey = keyData.aes_key_hex;
+        const keyBytes = new Uint8Array(hexKey.match(/.{2}/g).map(b => parseInt(b, 16)));
+        const aesKey = await crypto.subtle.importKey(
+            "raw", keyBytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
+        );
+
+        const msgs = msgsData.messages || [];
+        const list = document.getElementById("msg-list");
+        list.innerHTML = "";
+        let failed = 0;
+
+        for (const m of msgs) {
+            const wrap = document.createElement("div");
+            wrap.className = "msg-wrap " + (m.from === "me" ? "me" : "them");
+
+            const bubble = document.createElement("div");
+            bubble.className = "msg-bubble";
+
+            try {
+                const buf = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: fromB64(m.iv) },
+                    aesKey,
+                    fromB64(m.ciphertext)
+                );
+                bubble.textContent = new TextDecoder().decode(buf);
+            } catch {
+                bubble.textContent = "[не удалось расшифровать]";
+                bubble.style.opacity = "0.5";
+                failed++;
+            }
+
+            wrap.appendChild(bubble);
+
+            const time = document.createElement("div");
+            time.className = "msg-time";
+            time.textContent = new Date(m.time).toLocaleString("ru");
+            wrap.appendChild(time);
+
+            list.appendChild(wrap);
+        }
+
+        document.getElementById("result-title").textContent =
+            `Переписка с ${msgsData.with || keyData.with || "?"}`;
+        document.getElementById("result-stats").textContent =
+            `${msgs.length} сообщений` + (failed ? `, ${failed} не расшифровано` : ", все расшифрованы ✓");
+        document.getElementById("result").style.display = "block";
+
+    } catch(e) {
+        showError("Ошибка расшифровки: " + e.message);
+    }
+}
+</script>
+
+</body>
+</html>

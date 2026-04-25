@@ -269,6 +269,16 @@
       margin-top: 16px;
     }
     .section-title:first-child { margin-top: 0; }
+
+    /* DECRYPT SCREEN */
+    .file-pick-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .file-pick-name { font-size: 12px; color: var(--tg-theme-hint-color, #888); }
+    .file-pick-name.loaded { color: #4caf50; }
   </style>
 </head>
 <body>
@@ -277,10 +287,41 @@
 <div id="screen-sessions" class="screen active">
   <div class="header">
     <h3>Сессии</h3>
+    <button class="btn secondary small" onclick="showScreen('screen-decrypt')">🔓</button>
     <button class="btn small" onclick="showScreen('screen-new')">+ Новая</button>
   </div>
   <div id="incoming-section"></div>
   <div id="sessions-list"></div>
+</div>
+
+<!-- ЭКРАН: расшифровка -->
+<div id="screen-decrypt" class="screen">
+  <div class="header">
+    <button class="btn secondary small" onclick="showScreen('screen-sessions')">← Назад</button>
+    <h3>Расшифровать чат</h3>
+  </div>
+
+  <div class="card">
+    <div class="form-label">Файл с сообщениями (chat_*.json)</div>
+    <div class="file-pick-row">
+      <button class="btn secondary small" onclick="document.getElementById('dec-input-msgs').click()">Выбрать</button>
+      <span class="file-pick-name" id="dec-msgs-name">не выбран</span>
+    </div>
+    <input type="file" id="dec-input-msgs" accept=".json" style="display:none" onchange="decLoadMsgs(this)">
+  </div>
+
+  <div class="card">
+    <div class="form-label">Файл с ключом (key_*.json)</div>
+    <div class="file-pick-row">
+      <button class="btn secondary small" onclick="document.getElementById('dec-input-key').click()">Выбрать</button>
+      <span class="file-pick-name" id="dec-key-name">не выбран</span>
+    </div>
+    <input type="file" id="dec-input-key" accept=".json" style="display:none" onchange="decLoadKey(this)">
+  </div>
+
+  <div id="dec-error" style="color:#e53935;font-size:13px;margin-bottom:12px;"></div>
+  <button class="btn" id="dec-btn" onclick="decryptImported()" disabled>Расшифровать</button>
+  <div id="dec-result"></div>
 </div>
 
 <!-- ЭКРАН: новая сессия -->
@@ -349,6 +390,9 @@
     <div class="crypto-row">
       <div class="crypto-label">Истекает</div>
       <div class="crypto-value" id="cp-expires">—</div>
+    </div>
+    <div class="crypto-row">
+      <button class="btn small secondary" onclick="exportChat()" style="margin-top:4px;width:100%">⬇ Экспорт чата + ключей</button>
     </div>
   </details>
 
@@ -929,6 +973,53 @@ async function closeSession() {
 }
 
 // ============================
+// EXPORT CHAT
+// ============================
+
+function downloadJson(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function exportChat() {
+    if (!currentSessionId) return;
+    const session = getSession(currentSessionId);
+    if (!session) return;
+
+    const slug = session.theirName.replace(/[^a-z0-9]/gi, "_");
+    const ts = Date.now();
+
+    const messagesData = {
+        exported_at: new Date().toISOString(),
+        with: session.theirName,
+        note: "Decrypt with AES-256-GCM using the key file. Each message has its own IV.",
+        messages: getMessages(currentSessionId).map(m => ({
+            from: m.fromMe ? "me" : "them",
+            time: new Date(m.ts).toISOString(),
+            iv: m.iv,
+            ciphertext: m.ciphertext
+        }))
+    };
+
+    const keyData = {
+        exported_at: new Date().toISOString(),
+        with: session.theirName,
+        algorithm: "AES-256-GCM",
+        aes_key_hex: session.aesKeyHex,
+        my_pubkey_b64: session.myPubKeyB64,
+        their_pubkey_b64: session.theirPubKeyB64
+    };
+
+    downloadJson(messagesData, `chat_${slug}_${ts}.json`);
+    downloadJson(keyData, `key_${slug}_${ts}.json`);
+}
+
+// ============================
 // POLLING
 // ============================
 
@@ -1017,6 +1108,99 @@ async function poll() {
 }
 
 setInterval(poll, 2000);
+
+// ============================
+// DECRYPT IMPORTED FILES
+// ============================
+
+let decMsgsData = null;
+let decKeyData = null;
+
+function decLoadMsgs(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            decMsgsData = JSON.parse(e.target.result);
+            document.getElementById("dec-msgs-name").textContent = file.name;
+            document.getElementById("dec-msgs-name").className = "file-pick-name loaded";
+            decCheckReady();
+        } catch { document.getElementById("dec-error").textContent = "Ошибка чтения файла сообщений"; }
+    };
+    reader.readAsText(file);
+}
+
+function decLoadKey(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            decKeyData = JSON.parse(e.target.result);
+            document.getElementById("dec-key-name").textContent = file.name;
+            document.getElementById("dec-key-name").className = "file-pick-name loaded";
+            decCheckReady();
+        } catch { document.getElementById("dec-error").textContent = "Ошибка чтения файла ключа"; }
+    };
+    reader.readAsText(file);
+}
+
+function decCheckReady() {
+    document.getElementById("dec-btn").disabled = !(decMsgsData && decKeyData);
+}
+
+async function decryptImported() {
+    document.getElementById("dec-error").textContent = "";
+    document.getElementById("dec-result").innerHTML = "";
+    try {
+        const keyBytes = new Uint8Array(decKeyData.aes_key_hex.match(/.{2}/g).map(b => parseInt(b, 16)));
+        const aesKey = await crypto.subtle.importKey(
+            "raw", keyBytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"]
+        );
+
+        const msgs = decMsgsData.messages || [];
+        let html = `<div class="section-title" style="margin-top:16px">Переписка с ${decMsgsData.with || "?"} — ${msgs.length} сообщений</div>`;
+
+        const box = document.createElement("div");
+        box.style.display = "flex";
+        box.style.flexDirection = "column";
+        box.style.gap = "8px";
+
+        for (const m of msgs) {
+            const wrap = document.createElement("div");
+            wrap.className = "msg-wrap " + (m.from === "me" ? "me" : "them");
+
+            const bubble = document.createElement("div");
+            bubble.className = "msg-bubble";
+
+            try {
+                const buf = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: fromB64(m.iv) }, aesKey, fromB64(m.ciphertext)
+                );
+                bubble.textContent = new TextDecoder().decode(buf);
+            } catch {
+                bubble.textContent = "[не удалось расшифровать]";
+                bubble.style.opacity = "0.5";
+            }
+            wrap.appendChild(bubble);
+
+            const time = document.createElement("div");
+            time.className = "msg-time";
+            time.textContent = new Date(m.time).toLocaleString("ru");
+            wrap.appendChild(time);
+
+            box.appendChild(wrap);
+        }
+
+        const result = document.getElementById("dec-result");
+        result.innerHTML = html;
+        result.appendChild(box);
+
+    } catch(e) {
+        document.getElementById("dec-error").textContent = "Ошибка: " + e.message;
+    }
+}
 
 // ============================
 // INIT
