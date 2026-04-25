@@ -397,6 +397,9 @@
     <div class="crypto-row">
       <button class="btn small secondary" onclick="showCryptoCode()" style="margin-top:4px;width:100%">👁 Посмотреть код шифрования</button>
     </div>
+    <div class="crypto-row">
+      <button class="btn small secondary" onclick="showRekeyModal()" style="margin-top:4px;width:100%">🔄 Сменить ключ (Re-key)</button>
+    </div>
   </details>
 
   <div id="chat-box"></div>
@@ -409,6 +412,65 @@
       <input class="msg-input" id="msg-input" placeholder="Сообщение..." />
       <button class="btn send-btn" onclick="sendMsg()">↑</button>
     </div>
+  </div>
+</div>
+
+<!-- МОДАЛКА: re-key -->
+<div id="rekey-modal" style="
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.7);
+  z-index:100;
+  overflow-y:auto;
+  padding:16px;
+">
+  <div style="
+    background:var(--tg-theme-bg-color,#fff);
+    border-radius:14px;
+    padding:16px;
+    max-width:600px;
+    margin:0 auto;
+  ">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <span style="font-weight:700;font-size:15px;flex:1">🔄 Смена ключа</span>
+      <button class="btn small danger" onclick="document.getElementById('rekey-modal').style.display='none'">✕</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn small" id="rekey-tab-auto" onclick="switchRekeyTab('auto')">Автоматически</button>
+      <button class="btn small secondary" id="rekey-tab-manual" onclick="switchRekeyTab('manual')">Вставить свой ключ</button>
+    </div>
+
+    <div id="rekey-pane-auto">
+      <p style="font-size:13px;color:var(--tg-theme-hint-color,#888);margin-bottom:16px">
+        Генерируется новая пара ECDH ключей, происходит новый обмен с собеседником. Старые сообщения останутся зашифрованы старым ключом.
+      </p>
+      <button class="btn" onclick="doRekey(null)">Сгенерировать и отправить новый ключ</button>
+    </div>
+
+    <div id="rekey-pane-manual" style="display:none">
+      <p style="font-size:13px;color:var(--tg-theme-hint-color,#888);margin-bottom:12px">
+        Вставьте свой приватный ключ в формате JWK (JSON). Из него будет получен публичный ключ и отправлен собеседнику.
+      </p>
+      <textarea id="rekey-jwk-input" style="
+        width:100%;
+        height:120px;
+        padding:10px;
+        border-radius:10px;
+        border:1px solid var(--tg-theme-hint-color,#ccc);
+        background:var(--tg-theme-secondary-bg-color,#f5f5f5);
+        color:var(--tg-theme-text-color,#000);
+        font-family:monospace;
+        font-size:11px;
+        resize:vertical;
+        margin-bottom:12px;
+      " placeholder='{"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}'></textarea>
+      <button class="btn" onclick="doRekeyManual()">Применить и отправить</button>
+    </div>
+
+    <div id="rekey-error" style="color:#e53935;font-size:13px;margin-top:12px"></div>
+    <div id="rekey-status" style="color:#4caf50;font-size:13px;margin-top:12px"></div>
   </div>
 </div>
 
@@ -1125,6 +1187,62 @@ async function poll() {
             }
             renderSessions();
 
+        } else if (payload.type === "rekey_init") {
+            // Собеседник инициировал re-key — отвечаем новым публичным ключом
+            const sid = sessionId(myId, from_id);
+            const session = getSession(sid);
+            if (!session) continue;
+
+            const kp = await generateKeyPair();
+            const myPubKeyB64 = await exportPubKey(kp.publicKey);
+            const myPrivKeyJwk = await exportPrivKey(kp.privateKey);
+            const theirPub = await importPubKey(payload.pubkey);
+            const aesKey = await deriveAES(kp.privateKey, theirPub);
+            const aesKeyHex = await aesKeyToHex(aesKey);
+
+            upsertSession({ ...session, myPubKeyB64, myPrivKeyJwk, theirPubKeyB64: payload.pubkey, aesKeyHex, status: "active" });
+
+            await fetch("/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    to_id: from_id,
+                    from_id: myId,
+                    payload: { type: "rekey_response", pubkey: myPubKeyB64 }
+                })
+            });
+
+            if (currentSessionId === sid) {
+                currentAESKey = aesKey;
+                document.getElementById("cp-my-pubkey").innerText = myPubKeyB64;
+                document.getElementById("cp-their-pubkey").innerText = payload.pubkey;
+                document.getElementById("cp-aes-key").innerText = aesKeyHex;
+                document.getElementById("chat-input-row").style.display = "flex";
+                document.getElementById("chat-pending-notice").style.display = "none";
+            }
+
+        } else if (payload.type === "rekey_response") {
+            // Наш re-key приняли — деривируем новый AES
+            const sid = sessionId(myId, from_id);
+            const session = getSession(sid);
+            if (!session) continue;
+
+            const privKey = await importPrivKey(session.myPrivKeyJwk);
+            const theirPub = await importPubKey(payload.pubkey);
+            const aesKey = await deriveAES(privKey, theirPub);
+            const aesKeyHex = await aesKeyToHex(aesKey);
+
+            upsertSession({ ...session, theirPubKeyB64: payload.pubkey, aesKeyHex, status: "active", rekeyPending: false });
+
+            if (currentSessionId === sid) {
+                currentAESKey = aesKey;
+                document.getElementById("cp-their-pubkey").innerText = payload.pubkey;
+                document.getElementById("cp-aes-key").innerText = aesKeyHex;
+                document.getElementById("chat-input-row").style.display = "flex";
+                document.getElementById("chat-pending-notice").style.display = "none";
+                document.getElementById("rekey-status").textContent = "✓ Ключ успешно обновлён!";
+            }
+
         } else if (payload.type === "msg") {
             // Входящее зашифрованное сообщение
             const sid = sessionId(myId, from_id);
@@ -1150,6 +1268,84 @@ async function poll() {
 }
 
 setInterval(poll, 2000);
+
+// ============================
+// RE-KEY
+// ============================
+
+function showRekeyModal() {
+    if (!currentSessionId) return;
+    const session = getSession(currentSessionId);
+    if (!session || session.status !== "active") return;
+    document.getElementById("rekey-error").textContent = "";
+    document.getElementById("rekey-status").textContent = "";
+    document.getElementById("rekey-jwk-input").value = "";
+    switchRekeyTab("auto");
+    document.getElementById("rekey-modal").style.display = "block";
+}
+
+function switchRekeyTab(tab) {
+    document.getElementById("rekey-pane-auto").style.display = tab === "auto" ? "block" : "none";
+    document.getElementById("rekey-pane-manual").style.display = tab === "manual" ? "block" : "none";
+    document.getElementById("rekey-tab-auto").className = "btn small" + (tab === "auto" ? "" : " secondary");
+    document.getElementById("rekey-tab-manual").className = "btn small" + (tab === "manual" ? "" : " secondary");
+}
+
+async function doRekey(existingPrivJwk) {
+    document.getElementById("rekey-error").textContent = "";
+    document.getElementById("rekey-status").textContent = "Генерация ключей...";
+
+    const session = getSession(currentSessionId);
+    if (!session) return;
+
+    let kp;
+    if (existingPrivJwk) {
+        const privKey = await importPrivKey(existingPrivJwk);
+        const pubKey = await crypto.subtle.importKey(
+            "jwk", { ...existingPrivJwk, d: undefined, key_ops: [] },
+            { name: "ECDH", namedCurve: "P-256" }, true, []
+        );
+        kp = { privateKey: privKey, publicKey: pubKey };
+    } else {
+        kp = await generateKeyPair();
+    }
+
+    const myPubKeyB64 = await exportPubKey(kp.publicKey);
+    const myPrivKeyJwk = await exportPrivKey(kp.privateKey);
+
+    upsertSession({ ...session, myPubKeyB64, myPrivKeyJwk, theirPubKeyB64: null, aesKeyHex: null, status: "pending", rekeyPending: true });
+    currentAESKey = null;
+
+    await fetch("/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            to_id: session.theirId,
+            from_id: myId,
+            payload: { type: "rekey_init", pubkey: myPubKeyB64, from_name: myName + (myUsername ? " @" + myUsername : "") }
+        })
+    });
+
+    document.getElementById("rekey-status").textContent = "✓ Запрос отправлен. Ожидаем ответ собеседника.";
+    document.getElementById("cp-my-pubkey").innerText = myPubKeyB64;
+    document.getElementById("cp-their-pubkey").innerText = "ожидание...";
+    document.getElementById("cp-aes-key").innerText = "не согласован";
+    document.getElementById("chat-input-row").style.display = "none";
+    document.getElementById("chat-pending-notice").style.display = "block";
+    document.getElementById("chat-pending-notice").innerText = "🔄 Re-key: ожидание ответа собеседника...";
+}
+
+async function doRekeyManual() {
+    document.getElementById("rekey-error").textContent = "";
+    const raw = document.getElementById("rekey-jwk-input").value.trim();
+    if (!raw) { document.getElementById("rekey-error").textContent = "Вставьте JWK ключ"; return; }
+    let jwk;
+    try { jwk = JSON.parse(raw); } catch { document.getElementById("rekey-error").textContent = "Невалидный JSON"; return; }
+    try {
+        await importPrivKey(jwk);
+    } catch { document.getElementById("rekey-error").textContent = "Невалидный ключ ECDH P-256"; return; }
+    await doRekey(jwk);
+}
 
 // ============================
 // SHOW CRYPTO CODE
