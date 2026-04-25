@@ -232,6 +232,11 @@
     .msg-status { color: var(--tg-theme-hint-color, #aaa); margin-left: 4px; }
     .msg-status.delivered { color: #4caf50; }
 
+    .file-bubble { display: flex; flex-direction: column; gap: 6px; }
+    .file-bubble .file-name { font-size: 13px; font-weight: 500; word-break: break-all; }
+    .attach-btn { font-size: 20px; background: none; border: none; cursor: pointer; padding: 0 4px; color: var(--tg-theme-hint-color, #aaa); line-height: 1; }
+    #file-input { display: none; }
+
     .chat-pending-notice {
       text-align: center;
       padding: 20px;
@@ -411,6 +416,8 @@
       ⏳ Ожидание ответа собеседника...
     </div>
     <div class="input-row" id="chat-input-row" style="display:none">
+      <button class="attach-btn" onclick="document.getElementById('file-input').click()" title="Прикрепить файл">📎</button>
+      <input type="file" id="file-input" onchange="handleFilePick(this)">
       <input class="msg-input" id="msg-input" placeholder="Сообщение..." />
       <button class="btn send-btn" onclick="sendMsg()">↑</button>
     </div>
@@ -1000,7 +1007,11 @@ async function openSession(sid) {
     box.innerHTML = "";
     const msgs = getMessages(sid);
     for (const msg of msgs) {
-        renderMessage(msg.plaintext, msg.ciphertext, msg.fromMe, msg.ts, msg.msg_id);
+        if (msg.type === "file") {
+            renderFileMessage(msg.orig_filename, msg.fromMe, msg.ts, msg.msg_id, msg.file_id, msg.iv, msg.keyEpoch);
+        } else {
+            renderMessage(msg.plaintext, msg.ciphertext, msg.fromMe, msg.ts, msg.msg_id);
+        }
     }
 
     showScreen("screen-chat");
@@ -1101,6 +1112,120 @@ async function closeSession() {
 
     showScreen("screen-sessions");
     renderSessions();
+}
+
+// ============================
+// FILE ENCRYPT / SEND / DOWNLOAD
+// ============================
+
+async function encryptFile(aesKey, arrayBuffer) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, arrayBuffer);
+    return { iv: toB64(iv), encryptedBuffer: ct };
+}
+
+async function decryptFile(aesKey, iv_b64, encryptedBuffer) {
+    return await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64(iv_b64) }, aesKey, encryptedBuffer);
+}
+
+function handleFilePick(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = "";
+    sendFile(file);
+}
+
+async function sendFile(file) {
+    if (!currentAESKey || !currentSessionId) return;
+    const session = getSession(currentSessionId);
+    if (!session || isExpired(session)) return;
+
+    if (file.size > 20 * 1024 * 1024) { alert("Файл слишком большой (макс 20MB)"); return; }
+
+    const ts = Date.now();
+    renderFileMessage(file.name, true, ts, null, null, null, null);
+
+    const buffer = await file.arrayBuffer();
+    const { iv, encryptedBuffer } = await encryptFile(currentAESKey, buffer);
+    const keyEpoch = session.currentEpoch || 0;
+
+    const formData = new FormData();
+    formData.append("to_id", session.theirId);
+    formData.append("from_id", myId);
+    formData.append("from_name", myName + (myUsername ? " @" + myUsername : ""));
+    formData.append("iv", iv);
+    formData.append("orig_filename", file.name);
+    formData.append("key_epoch", String(keyEpoch));
+    formData.append("file", new Blob([encryptedBuffer]), file.name + ".enc");
+
+    const res = await fetch("/file/send", { method: "POST", body: formData });
+    const { msg_id } = await res.json();
+
+    saveMessage(currentSessionId, { type: "file", orig_filename: file.name, fromMe: true, ts, msg_id, keyEpoch });
+}
+
+async function downloadFile(file_id, iv, orig_filename, keyEpoch) {
+    const session = getSession(currentSessionId);
+    if (!session) return;
+
+    const aesKey = await getKeyForEpoch(session, keyEpoch ?? 0);
+    if (!aesKey) { alert("Ключ для расшифровки не найден"); return; }
+
+    const res = await fetch("/file/download?file_id=" + encodeURIComponent(file_id));
+    if (!res.ok) { alert("Ошибка скачивания"); return; }
+
+    const encBuffer = await res.arrayBuffer();
+    const decBuffer = await decryptFile(aesKey, iv, encBuffer);
+
+    const blob = new Blob([decBuffer]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = orig_filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function renderFileMessage(filename, fromMe, ts, msgId, file_id, iv, keyEpoch) {
+    const box = document.getElementById("chat-box");
+    const wrap = document.createElement("div");
+    wrap.className = "msg-wrap " + (fromMe ? "me" : "them");
+    if (msgId) wrap.dataset.msgId = msgId;
+
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble file-bubble";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "file-name";
+    nameEl.innerText = "📎 " + filename;
+    bubble.appendChild(nameEl);
+
+    if (!fromMe && file_id) {
+        const btn = document.createElement("button");
+        btn.className = "btn small";
+        btn.style.marginTop = "4px";
+        btn.innerText = "⬇ Скачать и расшифровать";
+        btn.onclick = () => downloadFile(file_id, iv, filename, keyEpoch);
+        bubble.appendChild(btn);
+    }
+
+    wrap.appendChild(bubble);
+
+    if (ts) {
+        const time = document.createElement("div");
+        time.className = "msg-time";
+        time.innerText = new Date(ts).toLocaleTimeString("ru", {hour:"2-digit",minute:"2-digit"});
+        if (fromMe && msgId) {
+            const status = document.createElement("span");
+            status.className = "msg-status";
+            status.innerText = " ✓";
+            time.appendChild(status);
+        }
+        wrap.appendChild(time);
+    }
+
+    box.appendChild(wrap);
+    box.scrollTop = box.scrollHeight;
 }
 
 // ============================
@@ -1307,6 +1432,29 @@ async function poll() {
                 document.getElementById("chat-input-row").style.display = "flex";
                 document.getElementById("chat-pending-notice").style.display = "none";
                 document.getElementById("rekey-status").textContent = `✓ Ключ обновлён (эпоха ${rkRespEpoch})`;
+            }
+
+        } else if (payload.type === "file") {
+            const sid = sessionId(myId, from_id);
+            const ts = Date.now();
+            saveMessage(sid, {
+                type: "file",
+                orig_filename: payload.orig_filename,
+                file_id: payload.file_id,
+                iv: payload.iv,
+                keyEpoch: payload.key_epoch,
+                fromMe: false, ts,
+                msg_id: payload.msg_id
+            });
+            if (currentSessionId === sid) {
+                renderFileMessage(payload.orig_filename, false, ts, payload.msg_id, payload.file_id, payload.iv, payload.key_epoch);
+            }
+            if (payload.msg_id) {
+                fetch("/ack", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({ from_id: from_id, msg_id: payload.msg_id })
+                });
             }
 
         } else if (payload.type === "msg") {

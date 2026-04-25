@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, MenuButtonWebApp
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, MenuButtonWebApp, BufferedInputFile
 import time
 import json
 import os
@@ -291,6 +291,60 @@ async def poll_messages(chat_id: str):
     msgs = inbox.pop(chat_id, [])
     delivered = acks.pop(chat_id, [])
     return JSONResponse({"messages": msgs, "delivered": delivered})
+
+
+# -------------------------
+# FILE: SEND
+# -------------------------
+@app.post("/file/send")
+async def file_send(
+    to_id: str = Form(...),
+    from_id: str = Form(...),
+    from_name: str = Form(""),
+    iv: str = Form(...),
+    orig_filename: str = Form(...),
+    key_epoch: int = Form(0),
+    file: UploadFile = File(...)
+):
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        return JSONResponse({"ok": False, "error": "Файл слишком большой (макс 20MB)"}, status_code=400)
+
+    msg_id = str(uuid.uuid4())
+
+    sent = await bot.send_document(
+        to_id,
+        BufferedInputFile(data, filename=orig_filename + ".enc"),
+        caption=f"🔒 Зашифрованный файл от <b>{from_name}</b>",
+        parse_mode="HTML"
+    )
+
+    file_id = sent.document.file_id
+
+    if to_id not in inbox:
+        inbox[to_id] = []
+    inbox[to_id].append({
+        "from_id": from_id,
+        "payload": {
+            "type": "file",
+            "file_id": file_id,
+            "orig_filename": orig_filename,
+            "iv": iv,
+            "key_epoch": key_epoch,
+            "msg_id": msg_id
+        }
+    })
+
+    return {"ok": True, "msg_id": msg_id}
+
+
+# -------------------------
+# FILE: DOWNLOAD PROXY
+# -------------------------
+@app.get("/file/download")
+async def file_download(file_id: str):
+    buf = await bot.download(file_id)
+    return Response(content=buf.read(), media_type="application/octet-stream")
 
 
 # -------------------------
